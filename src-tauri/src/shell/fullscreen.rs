@@ -1,5 +1,6 @@
 //! Hide the dock while a fullscreen app (video, game, presentation) owns the primary monitor.
-use windows::Win32::Foundation::{HWND, RECT};
+use windows::Win32::Foundation::{HWND, POINT, RECT};
+use windows::Win32::Graphics::Gdi::{MonitorFromPoint, MonitorFromWindow, MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTOPRIMARY};
 use windows::Win32::UI::Accessibility::{SetWinEventHook, HWINEVENTHOOK};
 use windows::Win32::UI::Shell::{SHQueryUserNotificationState, QUNS_PRESENTATION_MODE, QUNS_RUNNING_D3D_FULL_SCREEN};
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -22,6 +23,11 @@ fn is_fullscreen(fg: HWND) -> bool {
     let mut buf = [0u16; 64];
     let n = unsafe { GetClassNameW(fg, &mut buf) } as usize;
     if SHELL_CLASSES.contains(&String::from_utf16_lossy(&buf[..n]).as_str()) {
+        return false;
+    }
+    // Fullscreen apps on other monitors leave the primary-monitor dock alone (QUNS is system-wide).
+    let primary = unsafe { MonitorFromPoint(POINT::default(), MONITOR_DEFAULTTOPRIMARY) };
+    if unsafe { MonitorFromWindow(fg, MONITOR_DEFAULTTONEAREST) } != primary {
         return false;
     }
     // D3D exclusive / presentation mode report true even when the window rect is odd.

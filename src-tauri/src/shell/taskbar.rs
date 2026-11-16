@@ -124,17 +124,30 @@ pub fn restore_all() {
     log::info!("[taskbar] restored {} taskbar window(s)", bars.len());
 }
 
-/// Start `<this exe> --guardian <our pid>`: it restores the taskbar if we die without cleanup.
-pub fn spawn_guardian() {
+/// Launch `<this exe> <mode> <pid>` detached: no console, out of our job if the job allows it.
+fn spawn_self(mode: &str, pid: u32) -> std::io::Result<()> {
     use std::os::windows::process::CommandExt;
+    const DETACHED_PROCESS: u32 = 0x0000_0008;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    let r = std::env::current_exe().and_then(|exe| {
-        std::process::Command::new(exe)
-            .args(["--guardian", &std::process::id().to_string()])
-            .creation_flags(CREATE_NO_WINDOW)
-            .spawn()
-    });
-    if let Err(e) = r {
+    const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
+    let exe = std::env::current_exe()?;
+    let run = |flags| std::process::Command::new(&exe).args([mode, &pid.to_string()]).creation_flags(flags).spawn().map(drop);
+    // Breakaway is denied (access denied) inside jobs without JOB_OBJECT_LIMIT_BREAKAWAY_OK.
+    run(DETACHED_PROCESS | CREATE_NO_WINDOW | CREATE_BREAKAWAY_FROM_JOB).or_else(|_| run(DETACHED_PROCESS | CREATE_NO_WINDOW))
+}
+
+/// Start the guardian for this process. It goes through a short-lived launcher
+/// (`--spawn-guardian`) so the guardian's parent is dead: "End process tree" / `taskkill /T`
+/// walk parent pids and so cannot reach it.
+pub fn spawn_guardian() {
+    if let Err(e) = spawn_self("--spawn-guardian", std::process::id()) {
+        log::error!("[taskbar] guardian launcher not started: {e}");
+    }
+}
+
+/// Launcher mode: start the real guardian for `pid`, then return (the launcher exits at once).
+pub fn launch_guardian(pid: u32) {
+    if let Err(e) = spawn_self("--guardian", pid) {
         log::error!("[taskbar] guardian not started: {e}");
     }
 }

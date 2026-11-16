@@ -10,17 +10,23 @@ fn data(hwnd: HWND) -> APPBARDATA {
     APPBARDATA { cbSize: size_of::<APPBARDATA>() as u32, hWnd: hwnd, uCallbackMessage: CALLBACK, uEdge: ABE_BOTTOM, ..Default::default() }
 }
 
-/// Register as a bottom appbar `height_px` (physical) tall on the monitor `monitor` (physical rect).
-/// Returns the rect the shell granted; move the window there.
-pub fn register(hwnd: HWND, monitor: RECT, height_px: i32) -> RECT {
+/// Register (no-op if already registered) as a bottom appbar `height_px` (physical) tall on
+/// `monitor` (physical rect) and return the rect the shell would grant. Sends no notifications.
+pub fn query(hwnd: HWND, monitor: RECT, height_px: i32) -> RECT {
     let mut d = data(hwnd);
     unsafe {
         SHAppBarMessage(ABM_NEW, &mut d);
         d.rc = RECT { top: monitor.bottom - height_px, ..monitor };
         SHAppBarMessage(ABM_QUERYPOS, &mut d);
-        d.rc.top = d.rc.bottom - height_px; // shell may lift the bottom above another appbar
-        SHAppBarMessage(ABM_SETPOS, &mut d);
     }
+    d.rc.top = d.rc.bottom - height_px; // shell may lift the bottom above another appbar
+    d.rc
+}
+
+/// Reserve `rc` (from `query`). Other appbars get ABN_POSCHANGED, so only call it on a change.
+pub fn set_pos(hwnd: HWND, rc: RECT) -> RECT {
+    let mut d = APPBARDATA { rc, ..data(hwnd) };
+    unsafe { SHAppBarMessage(ABM_SETPOS, &mut d) };
     d.rc
 }
 

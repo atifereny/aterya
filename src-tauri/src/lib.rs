@@ -42,9 +42,28 @@ pub fn guardian(pid: u32) {
     shell::taskbar::guard(pid);
 }
 
+/// `--spawn-guardian <pid>`: start the guardian detached from the dock's process tree, then exit.
+pub fn launch_guardian(pid: u32) {
+    init_log();
+    shell::taskbar::launch_guardian(pid);
+}
+
+/// True if another dock already runs in this session (autostart plus a manual launch).
+fn already_running() -> bool {
+    use windows::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS};
+    use windows::Win32::System::Threading::CreateMutexW;
+    // The handle is never closed: the mutex lives exactly as long as this process.
+    let r = unsafe { CreateMutexW(None, false, windows::core::w!(r"Local\custom_taskbar_dock")) };
+    r.is_ok() && unsafe { GetLastError() } == ERROR_ALREADY_EXISTS
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     init_log();
+    if already_running() {
+        log::warn!("dock already running; exiting without touching the taskbar");
+        return;
+    }
     let prev = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
         shell::teardown(); // never leave the user without a taskbar

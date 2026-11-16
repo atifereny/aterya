@@ -4,7 +4,7 @@ pub mod fullscreen;
 pub mod glass;
 pub mod taskbar;
 
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU32, Ordering};
 use tauri::{Emitter, Manager, WebviewWindow};
 use windows::core::w;
@@ -51,16 +51,36 @@ pub(crate) fn primary_monitor() -> RECT {
     mi.rcMonitor
 }
 
+/// Last reservation (granted rect, DPI); None forces the next place() to re-reserve.
+static PLACED: Mutex<Option<(RECT, u32)>> = Mutex::new(None);
+static PLACING: AtomicBool = AtomicBool::new(false);
+
+/// Whether a reservation needs SETPOS + a move: only when the rect or DPI differs from the last one.
+fn needs_place(last: Option<(RECT, u32)>, rc: RECT, dpi: u32) -> bool {
+    last != Some((rc, dpi))
+}
+
 /// (Re)claim the primary monitor's bottom edge at the current DPI and move the dock there.
-/// Re-run whenever the shell, DPI or display layout changes (ABM_NEW is a no-op when registered).
+/// Re-run whenever the shell, DPI or display layout changes. Unchanged results do nothing, so
+/// ABN_POSCHANGED from our own or another appbar's SETPOS cannot ping-pong.
 fn place(hwnd: HWND) {
+    if PLACING.swap(true, Ordering::SeqCst) {
+        return; // SETPOS / SetWindowPos can re-enter through the subclass
+    }
     let dpi = unsafe { GetDpiForWindow(hwnd) }.max(96);
     let height = ((DOCK_CSS + MARGIN_CSS) * dpi as f64 / 96.0).round() as i32;
-    let rc = appbar::register(hwnd, primary_monitor(), height);
-    log::info!("[shell] dock placed at {},{} {}x{}", rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top);
-    unsafe {
-        let _ = SetWindowPos(hwnd, Some(HWND_TOPMOST), rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, SWP_NOACTIVATE);
+    let want = appbar::query(hwnd, primary_monitor(), height);
+    let mut last = PLACED.lock().unwrap_or_else(|e| e.into_inner());
+    if needs_place(*last, want, dpi) {
+        let rc = appbar::set_pos(hwnd, want);
+        *last = Some((want, dpi));
+        log::info!("[shell] dock placed at {},{} {}x{}", rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top);
+        unsafe {
+            let _ = SetWindowPos(hwnd, Some(HWND_TOPMOST), rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, SWP_NOACTIVATE);
+        }
     }
+    drop(last);
+    PLACING.store(false, Ordering::SeqCst);
 }
 
 /// Size the dock across the primary monitor's bottom edge, hide the Windows taskbar, reserve, glass, show.
@@ -89,6 +109,7 @@ pub(crate) fn on_message(hwnd: HWND, msg: u32, wp: WPARAM, _lp: LPARAM) {
         m if m != 0 && m == TASKBAR_CREATED.load(Ordering::SeqCst) => {
             log::info!("[shell] TaskbarCreated: explorer restarted, hiding again");
             taskbar::hide_all();
+            *PLACED.lock().unwrap_or_else(|e| e.into_inner()) = None; // the new explorer forgot our reservation
             place(hwnd);
         }
         _ => {}
@@ -122,6 +143,22 @@ pub fn teardown() {
         appbar::unregister(HWND(h as *mut _));
     }
     taskbar::restore_all();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::needs_place;
+    use windows::Win32::Foundation::RECT;
+
+    const RC: RECT = RECT { left: 0, top: 1366, right: 2560, bottom: 1440 };
+
+    #[test]
+    fn place_only_on_change() {
+        assert!(needs_place(None, RC, 96));
+        assert!(!needs_place(Some((RC, 96)), RC, 96));
+        assert!(needs_place(Some((RC, 96)), RC, 144));
+        assert!(needs_place(Some((RECT { top: 1318, ..RC }, 96)), RC, 96));
+    }
 }
 
 /// Pill bounds in CSS px from the frontend; the pill sits at the top of the window.
