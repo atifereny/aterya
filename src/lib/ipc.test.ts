@@ -11,5 +11,6 @@ it("event names match the backend contract", () => {
     "battery://changed",
     "system://changed",
     "dock://visibility",
+    "dock://glass",
   ]);
 });

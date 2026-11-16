@@ -16,8 +16,40 @@ mod media;
 mod system;
 mod shell;
 
+/// Minimal stderr logger so `log::` output is visible in dev without a dependency.
+struct StderrLog;
+impl log::Log for StderrLog {
+    fn enabled(&self, m: &log::Metadata) -> bool {
+        m.level() <= log::Level::Info
+    }
+    fn log(&self, r: &log::Record) {
+        if self.enabled(r.metadata()) {
+            eprintln!("{} {}", r.level(), r.args());
+        }
+    }
+    fn flush(&self) {}
+}
+
+fn init_log() {
+    if log::set_logger(&StderrLog).is_ok() {
+        log::set_max_level(log::LevelFilter::Info);
+    }
+}
+
+/// `--guardian <pid>`: restore the Windows taskbar once the dock process exits, however it exits.
+pub fn guardian(pid: u32) {
+    init_log();
+    shell::taskbar::guard(pid);
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    init_log();
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        shell::teardown(); // never leave the user without a taskbar
+        prev(info);
+    }));
     tauri::Builder::default()
         .setup(|app| {
             let hub = state::Hub::new(app.handle().clone());
@@ -43,7 +75,7 @@ pub fn run() {
         .expect("error while running tauri application")
         .run(|_, event| {
             if let tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit = event {
-                shell::teardown(); // give the work area back
+                shell::teardown(); // give the work area and the Windows taskbar back
             }
         });
 }

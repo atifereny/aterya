@@ -60,7 +60,11 @@ unsafe extern "system" fn subclass(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM,
             let on_blur: fn(bool) = unsafe { std::mem::transmute(on_blur) };
             on_blur(blur);
         }
-        _ => {}
+        _ => {
+            let r = unsafe { DefSubclassProc(hwnd, msg, wp, lp) };
+            super::on_message(hwnd, msg, wp, lp); // AppBar, DPI, display, session, TaskbarCreated
+            return r;
+        }
     }
     unsafe { DefSubclassProc(hwnd, msg, wp, lp) }
 }
