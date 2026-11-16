@@ -522,11 +522,14 @@ dependencies = [
 name = "custom_taskbar"
 version = "0.1.0"
 dependencies = [
+ "base64 0.23.1",
  "log",
+ "png",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
+ "windows",
 ]
 
 [[package]]
