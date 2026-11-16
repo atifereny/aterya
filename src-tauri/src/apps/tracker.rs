@@ -88,7 +88,8 @@ pub fn start(app: AppHandle, pins: Vec<Pin>) {
     }
     std::thread::spawn(|| unsafe {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
-        refresh();
+        GATE.with_borrow_mut(Gate::mark);
+        run_refresh(false);
         // create..hide, namechange, foreground, minimizestart..end
         for (lo, hi) in [(0x8000, 0x8003), (0x800C, 0x800C), (0x0003, 0x0003), (0x0016, 0x0017)] {
             SetWinEventHook(lo, hi, None, Some(on_event), 0, 0, WINEVENT_OUTOFCONTEXT);
@@ -101,18 +102,84 @@ pub fn start(app: AppHandle, pins: Vec<Pin>) {
     });
 }
 
+/// Event coalescing and reentrancy state (hook thread only). Pure so it can be unit tested.
+#[derive(Default)]
+pub(crate) struct Gate {
+    busy: bool,
+    dirty: bool,
+    timer_armed: bool,
+}
+
+impl Gate {
+    /// An event arrived. Returns true when the caller must arm the one-shot timer.
+    pub fn mark(&mut self) -> bool {
+        self.dirty = true;
+        !std::mem::replace(&mut self.timer_armed, true)
+    }
+    /// The timer fired. Returns true when a refresh should run now.
+    pub fn on_timer(&mut self) -> bool {
+        self.timer_armed = false;
+        self.begin()
+    }
+    pub fn begin(&mut self) -> bool {
+        if self.busy || !self.dirty {
+            return false;
+        }
+        (self.busy, self.dirty) = (true, false);
+        true
+    }
+    /// Refresh done. Returns true when events arrived meanwhile and the timer must be armed.
+    pub fn finish(&mut self) -> bool {
+        self.busy = false;
+        self.dirty && !std::mem::replace(&mut self.timer_armed, true)
+    }
+}
+
+thread_local!(static GATE: std::cell::RefCell<Gate> = Default::default());
+
+const DEBOUNCE_MS: u32 = 100;
+
+unsafe fn arm_timer() {
+    unsafe { SetTimer(None, 0, DEBOUNCE_MS, Some(on_timer)) };
+}
+
+unsafe fn run_refresh(from_timer: bool) {
+    unsafe {
+        let go = GATE.with_borrow_mut(|g| if from_timer { g.on_timer() } else { g.begin() });
+        if go {
+            refresh();
+            if GATE.with_borrow_mut(Gate::finish) {
+                arm_timer();
+            }
+        }
+    }
+}
+
+/// One-shot: kills itself, then refreshes once. A timer proc still fires inside nested COM loops.
+unsafe extern "system" fn on_timer(_: HWND, _: u32, id: usize, _: u32) {
+    unsafe {
+        let _ = KillTimer(None, id);
+        run_refresh(true);
+    }
+}
+
 unsafe extern "system" fn on_event(_: HWINEVENTHOOK, event: u32, hwnd: HWND, id_object: i32, id_child: i32, _: u32, _: u32) {
     if id_object != OBJID_WINDOW.0 || id_child != 0 || hwnd.0.is_null() {
         return;
     }
     unsafe {
+        if GetAncestor(hwnd, GA_ROOT) != hwnd {
+            return; // child windows, tooltips etc. never get a button
+        }
         if event == EVENT_SYSTEM_FOREGROUND {
             let root = GetAncestor(hwnd, GA_ROOT).0 as isize;
             let mut r = RECENT.lock().unwrap();
             r.retain(|&w| w != root);
             r.insert(0, root);
         }
-        refresh();
+        if GATE.with_borrow_mut(Gate::mark) {
+            arm_timer();
+        }
     }
 }
 
@@ -233,6 +300,7 @@ unsafe fn refresh() {
         pin_keys.iter().cloned().map(|k| (k, true)).chain(order.iter().cloned().map(|k| (k, false))).collect();
 
     let mut entries = Vec::new();
+    let mut pending = Vec::new();
     let mut groups = HashMap::new();
     for (key, pinned) in keys {
         let pin_id = ctx.pins.iter().find(|p| p.id.to_lowercase() == key).map(|p| p.id.clone());
@@ -257,8 +325,9 @@ unsafe fn refresh() {
             focused: wins.iter().find(|w| w.hwnd == fg).map(|w| w.hwnd),
             windows: wins.iter().map(|w| w.hwnd).collect(),
         };
+        pending.push((icon_id, state.windows.first().copied()));
         entries.push(AppEntry {
-            icon_data_url: icons::icon_for(&icon_id),
+            icon_data_url: String::new(),
             name,
             pinned,
             running: !wins.is_empty(),
@@ -269,11 +338,41 @@ unsafe fn refresh() {
         groups.insert(key, state);
     }
     drop((recent, order));
+    // Shell COM calls pump messages, so no lock may be held here.
+    for (e, (icon_id, hwnd)) in entries.iter_mut().zip(pending) {
+        e.icon_data_url = icons::icon_for(&icon_id, hwnd);
+    }
 
     *GROUPS.lock().unwrap() = Some(groups);
     let mut last = LAST.lock().unwrap();
     if *last != entries {
         *last = entries.clone();
         ctx.app.state::<Hub>().emit("apps://changed", entries);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Gate;
+
+    #[test]
+    fn events_coalesce_into_one_timer() {
+        let mut g = Gate::default();
+        assert!(g.mark());
+        assert!(!g.mark());
+        assert!(g.on_timer());
+        assert!(!g.on_timer()); // nothing dirty
+    }
+
+    #[test]
+    fn event_during_refresh_defers_and_reruns() {
+        let mut g = Gate::default();
+        g.mark();
+        assert!(g.on_timer()); // refresh running
+        assert!(g.mark()); // nested event re-arms
+        assert!(!g.on_timer()); // nested timer while busy: no reentry
+        assert!(g.finish()); // dirty left over: arm again
+        assert!(g.on_timer());
+        assert!(!g.finish());
     }
 }
