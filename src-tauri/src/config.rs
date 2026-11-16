@@ -2,13 +2,14 @@ use serde::{Deserialize, Serialize};
 use std::{io, path::{Path, PathBuf}};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct Pin {
     /// Exe path or `aumid:<AUMID>`.
     pub id: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, rename_all = "camelCase")]
 pub struct WeatherCfg {
     pub city: String,
     pub lat: Option<f64>,
@@ -22,7 +23,7 @@ impl Default for WeatherCfg {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, rename_all = "camelCase")]
 pub struct PollCfg {
     pub battery: u64,
     pub weather: u64,
@@ -36,7 +37,7 @@ impl Default for PollCfg {
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(default, rename_all = "camelCase")]
 pub struct Config {
     pub pins: Vec<Pin>,
     pub weather: WeatherCfg,
@@ -89,6 +90,14 @@ mod tests {
         let p = tmp("invalid");
         std::fs::write(&p, "{ not json").unwrap();
         assert_eq!(Config::load(&p), Config::default());
+    }
+
+    #[test]
+    fn saved_json_is_camel_case() {
+        let p = tmp("camel");
+        Config::default().save(&p).unwrap();
+        let t = std::fs::read_to_string(&p).unwrap();
+        assert!(t.contains("pollMinutes") && !t.contains("poll_minutes"));
     }
 
     #[test]
