@@ -41,9 +41,9 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
-        .run(|app, event| {
-            if let tauri::RunEvent::Exit = event {
-                shell::teardown(app); // give the work area back
+        .run(|_, event| {
+            if let tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit = event {
+                shell::teardown(); // give the work area back
             }
         });
 }

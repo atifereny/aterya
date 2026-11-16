@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
-import { setPillBounds } from "./lib/ipc";
+import { listen } from "@tauri-apps/api/event";
+import { EVENTS, setPillBounds } from "./lib/ipc";
 
 // Static copy of mockup A; Task 14 swaps in the live widgets.
 export default function App() {
@@ -8,13 +9,16 @@ export default function App() {
     const el = pill.current!;
     const report = () => {
       const r = el.getBoundingClientRect();
-      void setPillBounds(r.x, r.width, r.height).then((blur) => el.classList.toggle("solid", !blur));
+      void setPillBounds(r.x, r.width, r.height).then(solid);
     };
+    const solid = (blur: boolean) => el.classList.toggle("solid", !blur);
+    const unlisten = listen<boolean>(EVENTS.glass, (e) => solid(e.payload)); // transparency toggled live
     const ro = new ResizeObserver(report);
     ro.observe(el);
     window.addEventListener("resize", report); // width changes move x without resizing the pill
     return () => {
       ro.disconnect();
+      void unlisten.then((f) => f());
       window.removeEventListener("resize", report);
     };
   }, []);

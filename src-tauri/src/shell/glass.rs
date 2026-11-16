@@ -11,10 +11,12 @@ use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
 use windows::Win32::UI::Shell::{DefSubclassProc, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, GWL_STYLE, STYLESTRUCT, SWP_FRAMECHANGED, SWP_NOACTIVATE,
-    SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, WINDOW_STYLE, WM_NCACTIVATE, WM_STYLECHANGING, WS_CAPTION, WS_MAXIMIZEBOX, WS_MINIMIZEBOX,
+    GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, GWL_STYLE, MA_NOACTIVATE, STYLESTRUCT,
+    SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, WINDOW_STYLE, WM_MOUSEACTIVATE,
+    WM_NCACTIVATE, WM_SETTINGCHANGE, WM_STYLECHANGING, WS_CAPTION, WS_MAXIMIZEBOX, WS_MINIMIZEBOX,
     WS_SYSMENU,
 };
+use windows::core::PCWSTR;
 
 #[repr(C)]
 struct AccentPolicy {
@@ -30,6 +32,7 @@ struct CompositionAttribData {
     size: usize,
 }
 const WCA_ACCENT_POLICY: u32 = 19;
+const ACCENT_DISABLED: u32 = 0;
 const ACCENT_ENABLE_ACRYLICBLURBEHIND: u32 = 4;
 
 // Undocumented but stable since Win10 1803; used because the documented DWMSBT backdrops
@@ -41,13 +44,24 @@ unsafe extern "system" {
 
 const CAPTION_BITS: WINDOW_STYLE = WINDOW_STYLE(WS_CAPTION.0 | WS_SYSMENU.0 | WS_MINIMIZEBOX.0 | WS_MAXIMIZEBOX.0);
 
-unsafe extern "system" fn no_caption(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM, _: usize, _: usize) -> LRESULT {
-    if msg == WM_STYLECHANGING && wp.0 as i32 == GWL_STYLE.0 {
-        let ss = unsafe { &mut *(lp.0 as *mut STYLESTRUCT) };
-        ss.styleNew &= !CAPTION_BITS.0;
+unsafe extern "system" fn subclass(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM, _: usize, on_blur: usize) -> LRESULT {
+    match msg {
+        WM_STYLECHANGING if wp.0 as i32 == GWL_STYLE.0 => {
+            let ss = unsafe { &mut *(lp.0 as *mut STYLESTRUCT) };
+            ss.styleNew &= !CAPTION_BITS.0;
+        }
+        // A taskbar must never take focus from the app the user is in (WS_EX_NOACTIVATE comes from
+        // `focusable: false` in tauri.conf.json; this covers clicks routed through the webview).
+        WM_MOUSEACTIVATE => return LRESULT(MA_NOACTIVATE as isize),
+        // lParam -1: let activation change without DefWindowProc painting the inactive frame over the pill.
+        WM_NCACTIVATE => return unsafe { DefSubclassProc(hwnd, msg, wp, LPARAM(-1)) },
+        WM_SETTINGCHANGE if lp.0 != 0 && unsafe { PCWSTR(lp.0 as _).to_string() }.is_ok_and(|s| s == "ImmersiveColorSet") => {
+            let blur = set_blur(hwnd);
+            let on_blur: fn(bool) = unsafe { std::mem::transmute(on_blur) };
+            on_blur(blur);
+        }
+        _ => {}
     }
-    // lParam -1: let activation change without DefWindowProc painting the inactive frame over the pill.
-    let lp = if msg == WM_NCACTIVATE { LPARAM(-1) } else { lp };
     unsafe { DefSubclassProc(hwnd, msg, wp, lp) }
 }
 
@@ -67,27 +81,32 @@ fn transparency_enabled() -> bool {
     r.is_err() || v != 0 // missing value means the default, which is on
 }
 
-/// Acrylic blur behind the window, dark mode, and an empty region until the pill is measured.
-pub fn apply(hwnd: HWND) {
+/// Acrylic on when "Transparency effects" is on, accent off otherwise: with the setting off DWM
+/// paints acrylic as an opaque black slab over the whole window, ignoring the region.
+fn set_blur(hwnd: HWND) -> bool {
+    let want = transparency_enabled();
+    let state = if want { ACCENT_ENABLE_ACRYLICBLURBEHIND } else { ACCENT_DISABLED };
+    let mut policy = AccentPolicy { state, flags: 0, gradient_color: 0x10_10_10_10, animation_id: 0 };
+    let mut data = CompositionAttribData { attrib: WCA_ACCENT_POLICY, data: &mut policy as *mut _ as _, size: size_of::<AccentPolicy>() };
+    let blur = unsafe { SetWindowCompositionAttribute(hwnd, &mut data) }.as_bool() && want;
+    eprintln!("[glass] transparency effects {}, blur {}", if want { "on" } else { "off" }, blur);
+    BLUR.store(blur, Ordering::Relaxed);
+    blur
+}
+
+/// Blur (re-checked live on theme changes, reported through `on_blur`), dark mode,
+/// and an empty region until the pill is measured.
+pub fn apply(hwnd: HWND, on_blur: fn(bool)) {
     unsafe {
         // tao keeps WS_CAPTION on undecorated windows (and re-applies it on focus changes); with the
         // WM_NCACTIVATE override this stops an inactive frame being painted as a light band on the pill.
-        let _ = SetWindowSubclass(hwnd, Some(no_caption), 1, 0);
+        let _ = SetWindowSubclass(hwnd, Some(subclass), 1, on_blur as usize);
         SetWindowLongPtrW(hwnd, GWL_STYLE, GetWindowLongPtrW(hwnd, GWL_STYLE) & !(CAPTION_BITS.0 as isize));
         let flags = SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE;
         let _ = SetWindowPos(hwnd, None, 0, 0, 0, 0, flags);
         let dark = BOOL(1);
         let _ = DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &dark as *const _ as _, 4);
-        let mut policy = AccentPolicy { state: ACCENT_ENABLE_ACRYLICBLURBEHIND, flags: 0, gradient_color: 0x10_10_10_10, animation_id: 0 };
-        let mut data = CompositionAttribData { attrib: WCA_ACCENT_POLICY, data: &mut policy as *mut _ as _, size: size_of::<AccentPolicy>() };
-        // With "Transparency effects" off DWM paints acrylic as an opaque black slab over the whole
-        // window (ignoring the region), so skip it and let the frontend draw a solid pill instead.
-        // shortcut: read once at startup; toggling the setting needs a dock restart.
-        let blur = transparency_enabled() && SetWindowCompositionAttribute(hwnd, &mut data).as_bool();
-        if !blur {
-            log::warn!("no DWM blur (transparency effects off or accent call failed); solid pill");
-        }
-        BLUR.store(blur, Ordering::Relaxed);
+        set_blur(hwnd);
         // Nothing visible (or clickable) until the frontend reports the pill bounds.
         SetWindowRgn(hwnd, Some(CreateRectRgn(0, 0, 0, 0)), true);
     }

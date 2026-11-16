@@ -53,6 +53,7 @@ export const EVENTS = {
   battery: "battery://changed",
   system: "system://changed",
   visibility: "dock://visibility",
+  glass: "dock://glass", // payload: boolean, whether DWM blur is live
 } as const;
 
 export interface DockVisibility {

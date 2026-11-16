@@ -26,4 +26,5 @@ pub fn register(hwnd: HWND, monitor: RECT, height_px: i32) -> RECT {
 pub fn unregister(hwnd: HWND) {
     let mut d = data(hwnd);
     unsafe { SHAppBarMessage(ABM_REMOVE, &mut d) };
+    eprintln!("[appbar] ABM_REMOVE sent, work area released");
 }
