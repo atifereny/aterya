@@ -1,0 +1,49 @@
+/* Mockup A "Liquid Glass". The blur itself is DWM acrylic behind the window (shell/glass.rs);
+   the window region clips it to .pill, so this file only paints the fill, border and highlight. */
+html, body, #root {
+  margin: 0;
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+}
+#dock {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start; /* Rust clips at y=0: the pill must sit at the top of the window */
+  height: 64px;
+  font: 500 13px/1.15 "Segoe UI Variable", "Segoe UI", sans-serif;
+  color: #fff;
+}
+.pill {
+  box-sizing: border-box;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 22px;
+  /* outer shadow falls outside the window region, only the inset highlight shows */
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+.pill.solid { background: rgba(32, 32, 34, 0.94); } /* no DWM blur (transparency effects off) */
+.sep { width: 1px; height: 34px; background: currentColor; opacity: 0.15; margin: 0 4px; }
+.app {
+  width: 42px; height: 42px; border-radius: 12px;
+  display: grid; place-items: center;
+  font-weight: 700; font-size: 16px; color: #fff; position: relative;
+}
+.app.on::after {
+  content: ""; position: absolute; bottom: -6px;
+  width: 4px; height: 4px; border-radius: 50%; background: #fff; opacity: 0.9;
+}
+.tile {
+  padding: 6px 12px; border-radius: 12px; background: rgba(255, 255, 255, 0.1);
+  display: flex; align-items: center; gap: 9px; white-space: nowrap;
+}
+.big { font-size: 19px; font-weight: 600; letter-spacing: -0.2px; }
+.dim { opacity: 0.6; font-size: 12px; }
+.art { width: 34px; height: 34px; border-radius: 8px; background: linear-gradient(135deg, #e94e77, #f4a261); object-fit: cover; }
+.bar { width: 60px; height: 6px; border-radius: 3px; background: rgba(127, 127, 127, 0.3); overflow: hidden; }
+.bar i { display: block; height: 100%; border-radius: 3px; }

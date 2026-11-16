@@ -83,5 +83,6 @@ export const setVolume = (value: number) => invoke<void>("set_volume", { value }
 export const toggleMute = () => invoke<void>("toggle_mute");
 export const openQuickSettings = () => invoke<void>("open_quick_settings");
 export const openNotifications = () => invoke<void>("open_notifications");
+/** Resolves to whether DWM blur is live behind the pill. */
 export const setPillBounds = (x: number, width: number, height: number) =>
-  invoke<void>("set_pill_bounds", { x, width, height });
+  invoke<boolean>("set_pill_bounds", { x, width, height });

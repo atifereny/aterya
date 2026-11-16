@@ -14,6 +14,7 @@ mod claude_usage;
 mod media;
 #[allow(dead_code)]
 mod system;
+mod shell;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -28,14 +29,21 @@ pub fn run() {
             claude_usage::start(app.handle().clone(), cfg.poll_minutes.claude);
             media::start(app.handle().clone());
             system::start(app.handle().clone());
+            shell::setup(app.handle())?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![state::request_state, media::media_control,
             system::set_volume,
             system::toggle_mute,
             system::open_quick_settings,
-            system::open_notifications
+            system::open_notifications,
+            shell::set_pill_bounds
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                shell::teardown(app); // give the work area back
+            }
+        });
 }
