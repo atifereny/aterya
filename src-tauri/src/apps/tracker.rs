@@ -59,6 +59,11 @@ pub fn group_state(id: &str) -> Option<GroupState> {
     GROUPS.lock().unwrap().as_ref()?.get(&id.to_lowercase()).cloned()
 }
 
+/// Icon data URL of a button id, as of the last refresh.
+pub fn icon_of(id: &str) -> String {
+    LAST.lock().unwrap().iter().find(|e| e.id.eq_ignore_ascii_case(id)).map(|e| e.icon_data_url.clone()).unwrap_or_default()
+}
+
 /// Bring a window to the front, restoring it first if minimized.
 pub fn activate(hwnd: isize) {
     let h = HWND(hwnd as *mut _);

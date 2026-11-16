@@ -87,3 +87,24 @@ export const openNotifications = () => invoke<void>("open_notifications");
 /** Resolves to whether DWM blur is live behind the pill. */
 export const setPillBounds = (x: number, width: number, height: number) =>
   invoke<boolean>("set_pill_bounds", { x, width, height });
+
+export interface PreviewItem {
+  hwnd: string;
+  title: string;
+  minimized: boolean;
+  x: number;
+  y: number;
+}
+export interface PreviewPayload {
+  items: PreviewItem[];
+  icon: string;
+  thumbW: number;
+  thumbH: number;
+  titleH: number;
+}
+export const previewHover = (groupId: string, iconCx: number) => invoke<void>("preview_hover", { groupId, iconCx });
+export const previewLeave = () => invoke<void>("preview_leave");
+export const previewEnter = () => invoke<void>("preview_enter");
+export const previewItems = () => invoke<PreviewPayload | null>("preview_items");
+export const activateWindow = (hwnd: string) => invoke<void>("activate_window", { hwnd });
+export const closeWindow = (hwnd: string) => invoke<void>("close_window", { hwnd });

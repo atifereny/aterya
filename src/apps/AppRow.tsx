@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { appClick, AppEntry, EVENTS, startMenu, useEvent } from "../lib/ipc";
+import { appClick, AppEntry, EVENTS, previewHover, previewLeave, startMenu, useEvent } from "../lib/ipc";
 import { ICON_GAP, iconSizeFor } from "../lib/fit";
 
 export function AppRow({ availablePx }: { availablePx: number }) {
@@ -19,7 +19,17 @@ export function AppRow({ availablePx }: { availablePx: number }) {
           className={`app${a.running ? " on" : ""}`}
           style={{ ...box, ...(a.focused ? { ["--dot" as string]: "1" } : {}) }}
           title={a.name}
-          onClick={() => void appClick(a.id)}
+          onMouseEnter={(e) => {
+            if (a.windowCount > 0) {
+              const r = e.currentTarget.getBoundingClientRect();
+              void previewHover(a.id, r.left + r.width / 2);
+            }
+          }}
+          onMouseLeave={() => void previewLeave()}
+          onClick={() => {
+            void previewLeave();
+            void appClick(a.id);
+          }}
         >
           <AppIcon app={a} size={size} />
         </div>
