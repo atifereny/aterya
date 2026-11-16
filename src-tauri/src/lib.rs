@@ -8,6 +8,8 @@ mod state;
 mod battery;
 #[allow(dead_code)]
 mod weather;
+#[allow(dead_code)]
+mod claude_usage;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -19,6 +21,7 @@ pub fn run() {
             apps::tracker::start(app.handle().clone(), cfg.pins);
             battery::logitech::start(app.handle().clone(), cfg.poll_minutes.battery);
             weather::start(app.handle().clone(), cfg.weather, cfg.poll_minutes.weather);
+            claude_usage::start(app.handle().clone(), cfg.poll_minutes.claude);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![state::request_state])
