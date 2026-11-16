@@ -59,3 +59,12 @@ html, body, #root {
 .tray { display: flex; align-items: center; gap: 4px; }
 .system { gap: 12px; }
 .system .big { cursor: default; }
+/* Hover lift: icon scales/lifts, neighbours scale slightly. Transforms only, so no layout shift.
+   Lifted icon (30px*1.25, -4px) stays inside the 62px pill, so the window region needs no headroom. */
+.app-row .app > * { transition: transform 120ms ease-out; }
+.app-row .app:hover > * { transform: translateY(-4px) scale(1.25); }
+.app-row .app:hover + .app > *, .app-row .app:has(+ .app:hover) > * { transform: scale(1.1); }
+@media (prefers-reduced-motion: reduce) {
+  .app-row .app > * { transition: none; }
+  .app-row .app:hover > *, .app-row .app:hover + .app > *, .app-row .app:has(+ .app:hover) > * { transform: none; }
+}
