@@ -17,8 +17,10 @@ export function ClaudeUsage() {
   return (
     <div className="tile claude" title={`5 sa: %${Math.round(u.fiveHour)} · Haftalık: %${Math.round(u.weekly)}`}>
       <span className="dim">Claude</span>
-      <Bar pct={u.fiveHour} color="#f5a524" />
-      <Bar pct={u.weekly} color="#8b5cf6" />
+      <div style={{ width: 60, display: "grid", gap: 4 }}>
+        <Bar pct={u.fiveHour} color="#f5a524" />
+        <Bar pct={u.weekly} color="#8b5cf6" />
+      </div>
     </div>
   );
 }

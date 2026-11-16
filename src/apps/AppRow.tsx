@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { appClick, AppEntry, EVENTS, startMenu, useEvent } from "../lib/ipc";
 import { ICON_GAP, iconSizeFor } from "../lib/fit";
 
@@ -20,9 +21,21 @@ export function AppRow({ availablePx }: { availablePx: number }) {
           title={a.name}
           onClick={() => void appClick(a.id)}
         >
-          <img src={a.iconDataUrl} width={size} height={size} alt={a.name} draggable={false} />
+          <AppIcon app={a} size={size} />
         </div>
       ))}
     </div>
   );
+}
+
+// Empty or undecodable icon: a letter tile instead of the browser's alt text.
+function AppIcon({ app, size }: { app: AppEntry; size: number }) {
+  const [bad, setBad] = useState(false);
+  if (!app.iconDataUrl || bad)
+    return (
+      <div style={{ width: size, height: size, borderRadius: 8, background: "rgba(255,255,255,0.22)", display: "grid", placeItems: "center", fontWeight: 700, fontSize: size * 0.5 }}>
+        {[...app.name][0]?.toUpperCase() ?? "?"}
+      </div>
+    );
+  return <img src={app.iconDataUrl} width={size} height={size} alt="" draggable={false} onError={() => setBad(true)} />;
 }

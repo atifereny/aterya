@@ -30,8 +30,10 @@ export default function App() {
     ro.observe(el);
     ro.observe(others.current!); // widgets grow/shrink independently of the pill
     window.addEventListener("resize", report); // width changes move x without resizing the pill
-    void requestState();
+    // shortcut: listen() registers asynchronously; replay after a short delay so child listeners are live. Upgrade to awaiting all listeners.
+    const replay = setTimeout(() => void requestState(), 300);
     return () => {
+      clearTimeout(replay);
       ro.disconnect();
       void unlisten.then((f) => f());
       window.removeEventListener("resize", report);
