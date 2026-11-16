@@ -91,6 +91,8 @@ pub fn run() {
             system::open_quick_settings,
             system::open_notifications,
             shell::set_pill_bounds,
+            apps::pins::app_click,
+            apps::pins::start_menu,
             tray::host::tray_click,
             tray::host::open_tray_overflow
         ])
