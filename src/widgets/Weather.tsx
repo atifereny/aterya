@@ -3,7 +3,12 @@ import { weatherLabel } from "../lib/weatherCodes";
 
 export function Weather() {
   const w = useEvent<WeatherData | null>(EVENTS.weather, null);
-  if (!w) return null;
+  if (!w)
+    return (
+      <div className="tile weather">
+        <span className="dim">bilinmiyor</span>
+      </div>
+    );
   const { label, icon } = weatherLabel(w.code);
   return (
     <div className="tile weather" title={`${w.city} · ${label}`}>

@@ -75,13 +75,17 @@ pub fn start(app: AppHandle, cfg: WeatherCfg, poll_minutes: u64) {
                 match geocode(&client, &cfg.city) {
                     Ok(c) => {
                         coords = Some(c);
-                        // Reload so pins changed meanwhile are not overwritten.
+                        // Reload so pins changed meanwhile are not overwritten; never overwrite an unreadable file.
                         let path = config::config_path();
-                        let mut full = config::Config::load(&path);
-                        full.weather.lat = Some(c.0);
-                        full.weather.lon = Some(c.1);
-                        if let Err(e) = full.save(&path) {
-                            log::warn!("saving geocode failed: {e}");
+                        match config::Config::try_load(&path) {
+                            Ok(mut full) => {
+                                full.weather.lat = Some(c.0);
+                                full.weather.lon = Some(c.1);
+                                if let Err(e) = full.save(&path) {
+                                    log::warn!("saving geocode failed: {e}");
+                                }
+                            }
+                            Err(e) => log::warn!("config unreadable, geocode not saved: {e}"),
                         }
                     }
                     Err(e) => log::warn!("{e}"), // emit null below, retry next poll

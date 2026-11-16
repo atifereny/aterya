@@ -54,11 +54,25 @@ impl Config {
         })
     }
 
+    /// Defaults only when the file is missing; Err on read or parse failure so callers never overwrite a bad file.
+    pub fn try_load(path: &Path) -> Result<Config, String> {
+        match std::fs::read_to_string(path) {
+            Ok(text) => serde_json::from_str(&text).map_err(|e| e.to_string()),
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Config::default()),
+            Err(e) => Err(e.to_string()),
+        }
+    }
+
+    /// Atomic: writes `<path>.tmp` then renames over the target.
     pub fn save(&self, path: &Path) -> io::Result<()> {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir)?;
         }
-        std::fs::write(path, serde_json::to_string_pretty(self)?)
+        let mut tmp = path.as_os_str().to_owned();
+        tmp.push(".tmp");
+        let tmp = PathBuf::from(tmp);
+        std::fs::write(&tmp, serde_json::to_string_pretty(self)?)?;
+        std::fs::rename(&tmp, path)
     }
 }
 
@@ -110,5 +124,25 @@ mod tests {
         };
         c.save(&p).unwrap();
         assert_eq!(Config::load(&p), c);
+    }
+
+    #[test]
+    fn try_load_invalid_is_err() {
+        let p = tmp("try_invalid");
+        std::fs::write(&p, "{ not json").unwrap();
+        assert!(Config::try_load(&p).is_err());
+    }
+
+    #[test]
+    fn try_load_missing_is_default() {
+        assert_eq!(Config::try_load(&tmp("try_missing")), Ok(Config::default()));
+    }
+
+    #[test]
+    fn save_leaves_no_tmp() {
+        let p = tmp("notmp");
+        Config::default().save(&p).unwrap();
+        Config::default().save(&p).unwrap();
+        assert!(!p.with_extension("json.tmp").exists());
     }
 }
