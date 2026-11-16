@@ -88,7 +88,7 @@ pub fn start(app: AppHandle, pins: Vec<Pin>) {
     }
     std::thread::spawn(|| unsafe {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
-        GATE.with_borrow_mut(Gate::mark);
+        GATE.with_borrow_mut(Gate::startup);
         run_refresh(false);
         // create..hide, namechange, foreground, minimizestart..end
         for (lo, hi) in [(0x8000, 0x8003), (0x800C, 0x800C), (0x0003, 0x0003), (0x0016, 0x0017)] {
@@ -120,6 +120,10 @@ impl Gate {
     pub fn on_timer(&mut self) -> bool {
         self.timer_armed = false;
         self.begin()
+    }
+    /// Request the initial refresh without touching the timer.
+    pub fn startup(&mut self) {
+        self.dirty = true;
     }
     pub fn begin(&mut self) -> bool {
         if self.busy || !self.dirty {
@@ -168,11 +172,13 @@ unsafe extern "system" fn on_event(_: HWINEVENTHOOK, event: u32, hwnd: HWND, id_
         return;
     }
     unsafe {
-        if GetAncestor(hwnd, GA_ROOT) != hwnd {
+        // Null root means the hwnd is already gone (late destroy/hide): still refresh.
+        let root = GetAncestor(hwnd, GA_ROOT);
+        if !root.0.is_null() && root != hwnd {
             return; // child windows, tooltips etc. never get a button
         }
-        if event == EVENT_SYSTEM_FOREGROUND {
-            let root = GetAncestor(hwnd, GA_ROOT).0 as isize;
+        if event == EVENT_SYSTEM_FOREGROUND && !root.0.is_null() {
+            let root = root.0 as isize;
             let mut r = RECENT.lock().unwrap();
             r.retain(|&w| w != root);
             r.insert(0, root);
@@ -362,6 +368,15 @@ mod tests {
         assert!(!g.mark());
         assert!(g.on_timer());
         assert!(!g.on_timer()); // nothing dirty
+    }
+
+    #[test]
+    fn startup_leaves_timer_free_for_later_events() {
+        let mut g = Gate::default();
+        g.startup();
+        assert!(g.begin());
+        assert!(!g.finish());
+        assert!(g.mark()); // a later event must arm the timer
     }
 
     #[test]
