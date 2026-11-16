@@ -12,6 +12,8 @@ mod weather;
 mod claude_usage;
 #[allow(dead_code)]
 mod media;
+#[allow(dead_code)]
+mod system;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -25,9 +27,15 @@ pub fn run() {
             weather::start(app.handle().clone(), cfg.weather, cfg.poll_minutes.weather);
             claude_usage::start(app.handle().clone(), cfg.poll_minutes.claude);
             media::start(app.handle().clone());
+            system::start(app.handle().clone());
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![state::request_state, media::media_control])
+        .invoke_handler(tauri::generate_handler![state::request_state, media::media_control,
+            system::set_volume,
+            system::toggle_mute,
+            system::open_quick_settings,
+            system::open_notifications
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
