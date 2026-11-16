@@ -165,7 +165,10 @@ mod tests {
 /// Returns whether DWM blur is live, so the frontend can fall back to a solid pill.
 #[tauri::command]
 pub fn set_pill_bounds(window: WebviewWindow, x: f64, width: f64, height: f64) -> Result<bool, String> {
-    let hwnd = window.hwnd().map_err(|e| e.to_string())?;
-    glass::set_region(hwnd, x, width, height, PILL_RADIUS_CSS);
+    let hwnd = window.hwnd().map_err(|e| e.to_string())?.0 as isize;
+    // Composition objects belong to the main thread.
+    window
+        .run_on_main_thread(move || glass::set_region(HWND(hwnd as *mut _), x, width, height, PILL_RADIUS_CSS))
+        .map_err(|e| e.to_string())?;
     Ok(glass::blur_active())
 }

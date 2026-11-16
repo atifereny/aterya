@@ -1,5 +1,5 @@
-/* Mockup A "Liquid Glass". The blur itself is DWM acrylic behind the window (shell/glass.rs);
-   the window region clips it to .pill, so this file only paints the fill, border and highlight. */
+/* Mockup A "Liquid Glass". The blur itself is a DWM host-backdrop visual behind the webview, clipped
+   to the pill with anti-aliased corners (shell/glass.rs); this file only paints fill, border, highlight. */
 html, body, #root {
   margin: 0;
   background: transparent;

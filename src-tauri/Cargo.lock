@@ -584,6 +584,7 @@ dependencies = [
  "tauri-build",
  "windows",
  "windows-core",
+ "windows-numerics",
 ]
 
 [[package]]

@@ -1,14 +1,19 @@
-//! DWM blur behind the dock window, clipped to the pill by a rounded window region.
-use std::ffi::c_void;
+//! Blurred backdrop behind the pill: a DirectComposition visual painted with the host backdrop
+//! brush (the same DWM blur Windows acrylic uses) and clipped by an anti-aliased rounded-rect
+//! geometry. A slightly larger window region keeps clicks outside the pill going to windows below.
+use std::cell::RefCell;
 use std::sync::atomic::{AtomicBool, Ordering};
-use windows::core::w;
-use windows::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_DWORD};
-use windows::Win32::Foundation::HWND;
-use windows_core::BOOL;
-use windows::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_USE_IMMERSIVE_DARK_MODE};
+use windows::core::{w, Interface, PCWSTR};
+use windows::System::DispatcherQueueController;
+use windows::UI::Composition::Desktop::DesktopWindowTarget;
+use windows::UI::Composition::{CompositionRoundedRectangleGeometry, Compositor, SpriteVisual};
+use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_USE_HOSTBACKDROPBRUSH, DWMWA_USE_IMMERSIVE_DARK_MODE};
 use windows::Win32::Graphics::Gdi::{CreateRectRgn, CreateRoundRectRgn, SetWindowRgn};
+use windows::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_DWORD};
+use windows::Win32::System::WinRT::Composition::ICompositorDesktopInterop;
+use windows::Win32::System::WinRT::{CreateDispatcherQueueController, DispatcherQueueOptions, DQTAT_COM_NONE, DQTYPE_THREAD_CURRENT};
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
-use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
 use windows::Win32::UI::Shell::{DefSubclassProc, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
     GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, GWL_STYLE, MA_NOACTIVATE, STYLESTRUCT,
@@ -16,31 +21,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     WM_NCACTIVATE, WM_SETTINGCHANGE, WM_STYLECHANGING, WS_CAPTION, WS_MAXIMIZEBOX, WS_MINIMIZEBOX,
     WS_SYSMENU,
 };
-use windows::core::PCWSTR;
-
-#[repr(C)]
-struct AccentPolicy {
-    state: u32,
-    flags: u32,
-    gradient_color: u32, // AABBGGRR tint under the CSS fill
-    animation_id: u32,
-}
-#[repr(C)]
-struct CompositionAttribData {
-    attrib: u32,
-    data: *mut c_void,
-    size: usize,
-}
-const WCA_ACCENT_POLICY: u32 = 19;
-const ACCENT_DISABLED: u32 = 0;
-const ACCENT_ENABLE_ACRYLICBLURBEHIND: u32 = 4;
-
-// Undocumented but stable since Win10 1803; used because the documented DWMSBT backdrops
-// fall back to a flat colour whenever the window is inactive, and the dock almost always is.
-#[link(name = "user32", kind = "raw-dylib")]
-unsafe extern "system" {
-    fn SetWindowCompositionAttribute(hwnd: HWND, data: *mut CompositionAttribData) -> BOOL;
-}
+use windows_core::BOOL;
+use windows_numerics::{Vector2, Vector3};
 
 const CAPTION_BITS: WINDOW_STYLE = WINDOW_STYLE(WS_CAPTION.0 | WS_SYSMENU.0 | WS_MINIMIZEBOX.0 | WS_MAXIMIZEBOX.0);
 
@@ -85,21 +67,48 @@ fn transparency_enabled() -> bool {
     r.is_err() || v != 0 // missing value means the default, which is on
 }
 
-/// Acrylic on when "Transparency effects" is on, accent off otherwise: with the setting off DWM
-/// paints acrylic as an opaque black slab over the whole window, ignoring the region.
-fn set_blur(hwnd: HWND) -> bool {
+/// Composition objects; they live on the window's (main) thread.
+struct Backdrop {
+    _queue: DispatcherQueueController,
+    _target: DesktopWindowTarget,
+    visual: SpriteVisual,
+    shape: CompositionRoundedRectangleGeometry,
+}
+
+thread_local! {
+    static BACKDROP: RefCell<Option<Backdrop>> = const { RefCell::new(None) };
+}
+
+fn create_backdrop(hwnd: HWND) -> windows::core::Result<Backdrop> {
+    let opts = DispatcherQueueOptions {
+        dwSize: size_of::<DispatcherQueueOptions>() as u32,
+        threadType: DQTYPE_THREAD_CURRENT,
+        apartmentType: DQTAT_COM_NONE,
+    };
+    let queue = unsafe { CreateDispatcherQueueController(opts)? }; // Compositor needs one on this thread
+    let compositor = Compositor::new()?;
+    // Not topmost: the visual sits under the WebView2 child, so the CSS pill paints over the blur.
+    let target = unsafe { compositor.cast::<ICompositorDesktopInterop>()?.CreateDesktopWindowTarget(hwnd, false)? };
+    let visual = compositor.CreateSpriteVisual()?;
+    visual.SetBrush(&compositor.CreateHostBackdropBrush()?)?;
+    let shape = compositor.CreateRoundedRectangleGeometry()?;
+    visual.SetClip(&compositor.CreateGeometricClipWithGeometry(&shape)?)?; // anti-aliased edge
+    target.SetRoot(&visual)?;
+    Ok(Backdrop { _queue: queue, _target: target, visual, shape })
+}
+
+/// Blur on when "Transparency effects" is on and the backdrop exists; otherwise the frontend
+/// paints a solid pill. Must run on the window's thread.
+fn set_blur(_hwnd: HWND) -> bool {
     let want = transparency_enabled();
-    let state = if want { ACCENT_ENABLE_ACRYLICBLURBEHIND } else { ACCENT_DISABLED };
-    let mut policy = AccentPolicy { state, flags: 0, gradient_color: 0x10_10_10_10, animation_id: 0 };
-    let mut data = CompositionAttribData { attrib: WCA_ACCENT_POLICY, data: &mut policy as *mut _ as _, size: size_of::<AccentPolicy>() };
-    let blur = unsafe { SetWindowCompositionAttribute(hwnd, &mut data) }.as_bool() && want;
-    eprintln!("[glass] transparency effects {}, blur {}", if want { "on" } else { "off" }, blur);
+    let blur = BACKDROP.with_borrow(|b| b.as_ref().is_some_and(|b| b.visual.SetIsVisible(want).is_ok())) && want;
+    log::info!("[glass] transparency effects {}, blur {}", if want { "on" } else { "off" }, blur);
     BLUR.store(blur, Ordering::Relaxed);
     blur
 }
 
 /// Blur (re-checked live on theme changes, reported through `on_blur`), dark mode,
-/// and an empty region until the pill is measured.
+/// and an empty region until the pill is measured. Must run on the window's thread.
 pub fn apply(hwnd: HWND, on_blur: fn(bool)) {
     unsafe {
         // tao keeps WS_CAPTION on undecorated windows (and re-applies it on focus changes); with the
@@ -108,29 +117,46 @@ pub fn apply(hwnd: HWND, on_blur: fn(bool)) {
         SetWindowLongPtrW(hwnd, GWL_STYLE, GetWindowLongPtrW(hwnd, GWL_STYLE) & !(CAPTION_BITS.0 as isize));
         let flags = SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE;
         let _ = SetWindowPos(hwnd, None, 0, 0, 0, 0, flags);
-        let dark = BOOL(1);
-        let _ = DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &dark as *const _ as _, 4);
+        let on = BOOL(1);
+        let _ = DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &on as *const _ as _, 4);
+        let _ = DwmSetWindowAttribute(hwnd, DWMWA_USE_HOSTBACKDROPBRUSH, &on as *const _ as _, 4);
+        match create_backdrop(hwnd) {
+            Ok(b) => BACKDROP.set(Some(b)),
+            Err(e) => log::warn!("[glass] no composition backdrop ({e}); solid pill"),
+        }
         set_blur(hwnd);
         // Nothing visible (or clickable) until the frontend reports the pill bounds.
         SetWindowRgn(hwnd, Some(CreateRectRgn(0, 0, 0, 0)), true);
     }
 }
 
-/// CSS px → physical px at the window's current DPI.
-fn phys(css: f64, dpi: u32) -> i32 {
-    (css * dpi as f64 / 96.0).round() as i32
+/// CSS px -> physical px at `dpi`.
+fn phys(css: f64, dpi: u32) -> f64 {
+    css * dpi as f64 / 96.0
 }
 
-/// Clip the window (paint, blur and hit-testing) to a rounded rect at the top of the window.
-/// All arguments are CSS px.
+/// Hit region margin (physical px) around the pill. GDI regions are aliased; keeping the region's
+/// stair-step this far outside the anti-aliased clip makes it invisible (only transparent pixels).
+const HIT_SLACK: i32 = 2;
+
+/// Place the blur behind the pill (a rounded rect at the top of the window) and make the same
+/// area, plus HIT_SLACK, the window's hit region. All arguments are CSS px. Window's thread only.
 pub fn set_region(hwnd: HWND, x: f64, width: f64, height: f64, radius: f64) {
+    let dpi = unsafe { GetDpiForWindow(hwnd) }.max(96);
+    let (l, w, h, r) = (phys(x, dpi), phys(width, dpi), phys(height, dpi), phys(radius, dpi));
+    BACKDROP.with_borrow(|b| {
+        if let Some(b) = b {
+            let size = Vector2 { X: w as f32, Y: h as f32 };
+            let _ = b.visual.SetOffset(Vector3 { X: l as f32, Y: 0.0, Z: 0.0 });
+            let _ = b.visual.SetSize(size);
+            let _ = b.shape.SetSize(size);
+            let _ = b.shape.SetCornerRadius(Vector2 { X: r as f32, Y: r as f32 });
+        }
+    });
+    let s = HIT_SLACK;
+    let (l, rgt, bot, d) = (l.floor() as i32 - s, (l + w).ceil() as i32 + s, h.ceil() as i32 + s, (2.0 * r).round() as i32 + 2 * s);
     unsafe {
-        let dpi = GetDpiForWindow(hwnd).max(96);
-        let (l, r, b, d) = (phys(x, dpi), phys(x + width, dpi), phys(height, dpi), phys(radius * 2.0, dpi));
-        // shortcut: GDI regions are aliased, so the 22px corners have a 1px stair-step; upgrade to a
-        // DirectComposition visual if that ever shows. Region also excludes the CSS drop shadow.
-        let rgn = CreateRoundRectRgn(l, 0, r + 1, b + 1, d, d);
-        SetWindowRgn(hwnd, Some(rgn), true); // the system owns rgn from here
+        SetWindowRgn(hwnd, Some(CreateRoundRectRgn(l, -s, rgt + 1, bot + 1, d, d)), true); // system owns the region
     }
 }
 
@@ -138,8 +164,8 @@ pub fn set_region(hwnd: HWND, x: f64, width: f64, height: f64, radius: f64) {
 mod tests {
     #[test]
     fn css_to_physical() {
-        assert_eq!(super::phys(64.0, 96), 64);
-        assert_eq!(super::phys(64.0, 144), 96);
-        assert_eq!(super::phys(22.5, 120), 28);
+        assert_eq!(super::phys(64.0, 96), 64.0);
+        assert_eq!(super::phys(64.0, 144), 96.0);
+        assert_eq!(super::phys(22.0, 120), 27.5);
     }
 }
