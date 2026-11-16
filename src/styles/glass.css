@@ -48,3 +48,14 @@ html, body, #root {
 .bar { width: 60px; height: 6px; border-radius: 3px; background: rgba(127, 127, 127, 0.3); overflow: hidden; }
 .bar i { display: block; height: 100%; border-radius: 3px; }
 .app.on[style*="--dot"]::after { opacity: 1; width: 8px; border-radius: 2px; box-shadow: 0 0 6px #fff; } /* focused: brighter dot */
+.pill { max-width: 90vw; }
+.dock-group { display: flex; align-items: center; gap: 8px; }
+.app-row .app img { pointer-events: none; }
+.np-controls { display: none; gap: 2px; }
+.nowplaying:hover .np-controls, .nowplaying:focus-within .np-controls { display: flex; }
+.np-controls button, .tray-chevron { background: none; border: 0; color: inherit; cursor: pointer; font-size: 14px; padding: 2px 4px; border-radius: 6px; }
+.np-controls button:hover, .tray-chevron:hover { background: rgba(255, 255, 255, 0.15); }
+.np-text { display: flex; flex-direction: column; }
+.tray { display: flex; align-items: center; gap: 4px; }
+.system { gap: 12px; }
+.system .big { cursor: default; }

@@ -1,12 +1,9 @@
 import { appClick, AppEntry, EVENTS, startMenu, useEvent } from "../lib/ipc";
 import { ICON_GAP, iconSizeFor } from "../lib/fit";
 
-// shortcut: fixed width budget, upgrade to measuring the container once layout (Task 14) is known
-const AVAILABLE_PX = 900;
-
-export function AppRow() {
+export function AppRow({ availablePx }: { availablePx: number }) {
   const apps = useEvent<AppEntry[]>(EVENTS.apps, []);
-  const size = iconSizeFor(apps.length + 1, AVAILABLE_PX);
+  const size = iconSizeFor(apps.length + 1, availablePx);
   const box = { width: size + 12, height: size + 12 };
   return (
     <div className="app-row" style={{ display: "flex", alignItems: "center", gap: ICON_GAP }}>

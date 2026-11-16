@@ -14,6 +14,7 @@ mod claude_usage;
 mod media;
 #[allow(dead_code)]
 mod system;
+mod autostart;
 mod shell;
 mod tray;
 
@@ -60,7 +61,6 @@ fn already_running() -> bool {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    init_log();
     if already_running() {
         log::warn!("dock already running; exiting without touching the taskbar");
         return;
@@ -70,8 +70,21 @@ pub fn run() {
         shell::teardown(); // never leave the user without a taskbar
         prev(info);
     }));
+    use tauri_plugin_log::{RotationStrategy, Target, TargetKind};
+    let logs = config::config_path().with_file_name("logs");
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .level(log::LevelFilter::Info)
+                .max_file_size(1_000_000)
+                .rotation_strategy(RotationStrategy::KeepSome(5))
+                .clear_targets()
+                .target(Target::new(TargetKind::Folder { path: logs, file_name: Some("dock".into()) }))
+                .target(Target::new(TargetKind::Stderr))
+                .build(),
+        )
         .setup(|app| {
+            autostart::ensure();
             let hub = state::Hub::new(app.handle().clone());
             tauri::Manager::manage(app, hub);
             let cfg = config::Config::load(&config::config_path());
