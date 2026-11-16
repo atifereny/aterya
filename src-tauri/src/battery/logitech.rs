@@ -20,9 +20,10 @@ const VID: u16 = 0x046D;
 const TIMEOUT: Duration = Duration::from_secs(2);
 
 // (id, name, reader). Swap a reader to change how a device is read.
-const DEVICES: [(&str, &str, fn() -> Option<BatteryReading>); 2] = [
+const DEVICES: [(&str, &str, fn() -> Option<BatteryReading>); 3] = [
     ("mouse", "G502", read_mouse),
     ("headset", "PRO X 2", read_headset),
+    ("keyboard", "Neo87", super::neo87::read),
 ];
 
 fn read_mouse() -> Option<BatteryReading> {
