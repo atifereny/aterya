@@ -15,6 +15,7 @@ mod media;
 #[allow(dead_code)]
 mod system;
 mod shell;
+mod tray;
 
 /// Minimal stderr logger so `log::` output is visible in dev without a dependency.
 struct StderrLog;
@@ -80,6 +81,7 @@ pub fn run() {
             claude_usage::start(app.handle().clone(), cfg.poll_minutes.claude);
             media::start(app.handle().clone());
             system::start(app.handle().clone());
+            tray::host::start(app.handle().clone());
             shell::setup(app.handle())?;
             Ok(())
         })
@@ -88,7 +90,9 @@ pub fn run() {
             system::toggle_mute,
             system::open_quick_settings,
             system::open_notifications,
-            shell::set_pill_bounds
+            shell::set_pill_bounds,
+            tray::host::tray_click,
+            tray::host::open_tray_overflow
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
