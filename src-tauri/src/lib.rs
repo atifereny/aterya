@@ -4,6 +4,8 @@ mod config;
 mod apps;
 #[allow(dead_code)]
 mod state;
+#[allow(dead_code)]
+mod battery;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -13,6 +15,7 @@ pub fn run() {
             tauri::Manager::manage(app, hub);
             let cfg = config::Config::load(&config::config_path());
             apps::tracker::start(app.handle().clone(), cfg.pins);
+            battery::logitech::start(app.handle().clone(), cfg.poll_minutes.battery);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![state::request_state])
