@@ -1,0 +1,168 @@
+/* Aterya settings, "Kor" direction: dark + orange, light + turquoise. Tokens live on <html data-scheme>, the accent is set from the page. */
+:root[data-scheme="dark"] { --bg: #14110f; --panel: #1d1917; --panel2: #29231f; --line: #342e2a; --fg: #f4ede6; --dim: #9d9189; --acc: #ff7a1a; --acc-text: #ff8f3d; --acc-soft: rgba(255, 122, 26, 0.16); --ink: #1a0d02; color-scheme: dark; }
+:root[data-scheme="light"] { --bg: #f0f7f6; --panel: #ffffff; --panel2: #e4f0ee; --line: #d3e3e0; --fg: #10282a; --dim: #5b7573; --acc: #0fb5ac; --acc-text: #07827b; --acc-soft: rgba(15, 181, 172, 0.14); --ink: #022b29; color-scheme: light; }
+
+html:has(.st-shell), html:has(.st-shell) body, html:has(.st-shell) #root { background: var(--bg); overflow: hidden; user-select: none; }
+.st-shell { display: flex; flex-direction: column; height: 100vh; background: var(--bg); color: var(--fg); font: 13.5px/1.45 "Segoe UI Variable", "Segoe UI", sans-serif; }
+.st { flex: 1; display: flex; min-height: 0; }
+.st h2 { margin: 0 0 4px; font-size: 24px; font-weight: 700; letter-spacing: -0.02em; }
+.st .sub { margin: 0 0 20px; color: var(--dim); }
+.st .note { margin: 18px 2px 0; color: var(--dim); font-size: 12.5px; }
+
+/* title bar */
+.tb { display: flex; align-items: center; height: 40px; flex: none; padding-left: 16px; border-bottom: 1px solid var(--line); font: 500 12.5px "Segoe UI Variable", "Segoe UI", sans-serif; color: var(--dim); }
+.tb-title { flex: 1; align-self: stretch; display: flex; align-items: center; font-weight: 700; letter-spacing: 0.2em; font-size: 11.5px; color: var(--fg); }
+.tb-logo { margin-right: 8px; border-radius: 5px; pointer-events: none; }
+.tb-btns { display: flex; align-items: center; gap: 4px; padding-right: 8px; }
+.tb-btns button { display: grid; place-items: center; width: 34px; height: 28px; border: 0; border-radius: 8px; background: transparent; color: var(--dim); cursor: pointer; transition: background 140ms, color 140ms, transform 140ms; }
+.tb-btns button:hover { background: var(--panel2); color: var(--fg); }
+.tb-btns button:active { transform: scale(0.92); }
+.tb-btns button.close:hover { background: #e5484d; color: #fff; }
+
+/* sidebar */
+.st nav { width: 208px; flex: none; box-sizing: border-box; padding: 18px 12px 14px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 3px; }
+.st .brand { display: flex; align-items: center; gap: 10px; padding: 2px 10px 16px; font: 700 18px "Segoe UI Variable", "Segoe UI", sans-serif; letter-spacing: -0.01em; }
+.st .brand img { border-radius: 9px; }
+.st nav button.tab { display: flex; align-items: center; gap: 10px; text-align: left; background: none; border: 0; color: var(--dim); padding: 9px 12px; border-radius: 10px; font: 600 13px "Segoe UI Variable", "Segoe UI", sans-serif; cursor: pointer; transition: background 140ms, color 140ms; }
+.st nav button.tab:hover { background: var(--panel); color: var(--fg); }
+.st nav button.tab.on { background: var(--acc-soft); color: var(--acc-text); }
+.st nav .grow { flex: 1; }
+.st .navfoot { border-top: 1px solid var(--line); padding: 12px 10px 0; display: flex; flex-direction: column; gap: 8px; color: var(--dim); font-size: 11.5px; }
+.st .navfoot .live { display: flex; align-items: center; gap: 7px; }
+.st .navfoot .live i { width: 7px; height: 7px; border-radius: 50%; background: #3fd07a; box-shadow: 0 0 8px rgba(63, 208, 122, 0.6); }
+
+.st main { flex: 1; min-width: 0; padding: 28px 36px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+@media (prefers-reduced-motion: no-preference) { .st main > * { animation: st-in 260ms cubic-bezier(0.22, 1, 0.36, 1) backwards; } }
+@keyframes st-in { from { opacity: 0; transform: translateY(6px); } }
+
+/* cards and rows */
+.st .card { display: flex; align-items: center; gap: 16px; padding: 12px 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; transition: border-color 160ms, background 160ms, opacity 160ms, transform 160ms; }
+.st .card.static { cursor: default; margin-bottom: 8px; }
+.st .card.off { opacity: 0.55; }
+.st .card.unpinned { border-color: var(--acc); }
+.st .meta { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+.st .meta span { color: var(--dim); font-size: 12.5px; }
+.st .chip { font-size: 11px; font-weight: 600; color: var(--dim); background: var(--panel2); padding: 3px 9px; border-radius: 8px; white-space: nowrap; }
+.st .chip.acc { color: var(--acc-text); background: var(--acc-soft); }
+
+/* switch */
+.st .sw { width: 40px; height: 22px; border-radius: 11px; border: 1px solid var(--line); background: var(--panel2); position: relative; cursor: pointer; transition: background 160ms, border-color 160ms; flex: none; padding: 0; }
+.st .sw i { position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--dim); transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), background 160ms; }
+.st .sw.on { background: var(--acc); border-color: var(--acc); }
+.st .sw.on i { transform: translateX(18px); background: var(--ink); }
+
+/* buttons */
+.st .keypick { display: flex; gap: 8px; flex-wrap: wrap; }
+.st .keybtn, .st .sel { background: var(--panel2); color: var(--fg); border: 1px solid var(--line); border-radius: 9px; padding: 7px 13px; font: 600 12.5px "Segoe UI Variable", "Segoe UI", sans-serif; cursor: pointer; white-space: nowrap; transition: border-color 140ms, background 140ms; }
+.st .keybtn:hover { border-color: var(--acc); }
+.st .keybtn.rec { background: var(--acc); border-color: var(--acc); color: var(--ink); }
+.st .keybtn.danger { color: #ef5b5b; }
+.st .keybtn.danger:hover { background: rgba(239, 91, 91, 0.15); border-color: #ef5b5b; }
+.st .card .keybtn { flex: none; }
+
+/* toolbar: search + category chips */
+.st .toolbar { display: flex; gap: 10px; margin-bottom: 10px; }
+.st .search { flex: 1; display: flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 11px; padding: 0 12px; color: var(--dim); }
+.st .search:focus-within { border-color: var(--acc); }
+.st .search input { flex: 1; min-width: 0; background: none; border: 0; outline: 0; color: var(--fg); font: inherit; padding: 9px 0; user-select: text; }
+.st .cats { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 18px; }
+.st .cats button { padding: 5px 12px; border-radius: 99px; border: 1px solid var(--line); background: none; color: var(--dim); font: 600 12px "Segoe UI Variable", "Segoe UI", sans-serif; cursor: pointer; }
+.st .cats button:hover { color: var(--fg); }
+.st .cats button.on { background: var(--acc-soft); border-color: transparent; color: var(--acc-text); }
+
+.st .cat { margin-bottom: 24px; }
+.st .cat h3 { margin: 0; font-size: 15px; font-weight: 700; }
+.st .cat h3 em { font-style: normal; font-weight: 600; font-size: 11px; color: var(--dim); background: var(--panel2); padding: 2px 8px; border-radius: 99px; margin-left: 6px; }
+.st .cat .sub { margin: 2px 0 10px; font-size: 12.5px; }
+.st .cat.empty { opacity: 0.45; }
+
+/* size slider row */
+.st .sizer { display: flex; align-items: center; gap: 10px; margin-top: 8px; font-size: 12.5px; color: var(--dim); flex-wrap: wrap; row-gap: 6px; }
+.st .sizer b { width: 40px; color: var(--fg); font-weight: 600; }
+.st .sizer .keybtn { padding: 4px 10px; font-size: 12px; }
+.st input[type="range"] { accent-color: var(--acc); }
+.st .sizer input { width: 130px; }
+.st .slider { margin-top: 22px; display: flex; align-items: center; gap: 14px; }
+.st .slider input { flex: 1; }
+.st .slider span { width: 28px; text-align: right; color: var(--dim); }
+
+/* live previews: the real widgets are white-on-glass, so their stage stays dark in both schemes */
+.st .pvbox { flex: none; width: 320px; height: 88px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+.st .pvlive { display: inline-flex; align-items: center; justify-content: center; flex: none; padding: 6px; border-radius: 18px; overflow: hidden; pointer-events: none; color: #fff; background: linear-gradient(135deg, #3a2d2a, #1f1a2e); border: 1px solid rgba(255, 255, 255, 0.1); }
+.st .pvbox .pvlive { max-width: none; }
+.st .tilecard .pvlive { width: 100%; box-sizing: border-box; margin-bottom: 4px; }
+.st .pvlive .tile { background: rgba(255, 255, 255, 0.1); }
+.st .sw-mini { display: flex; align-items: center; justify-content: center; gap: 5px; min-width: 0; height: 44px; padding: 0 12px; border-radius: 14px; background: linear-gradient(135deg, #3a2d2a, #1f1a2e); border: 1px solid rgba(255, 255, 255, 0.1); font-size: 11px; white-space: nowrap; pointer-events: none; flex: none; color: #fff; }
+.st .tilecard .sw-mini { width: 100%; box-sizing: border-box; padding: 0 8px; margin-bottom: 4px; overflow: hidden; }
+.st .card .sw-mini { width: 150px; box-sizing: border-box; overflow: hidden; }
+.st .sw-mini-app { width: 20px; height: 20px; border-radius: 6px; flex: none; }
+.st .sw-mini-col { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
+.st .sw-mini-col b { font-size: 12px; }
+.st .sw-mini-col small { color: #c9c9d0; font-size: 10px; }
+.st .sw-mini-wide { width: 100%; gap: 5px; }
+.st .sw-mini-art { width: 26px; height: 26px; border-radius: 6px; background: linear-gradient(135deg, #e0572f, #6e2a5c); flex: none; }
+.st .sw-mini-big { font-size: 20px; line-height: 1; }
+.st .sw-mini-ic { font-size: 11px; letter-spacing: 1px; }
+.st .sw-mini-bar { display: flex; align-items: center; gap: 5px; font-size: 9.5px; color: #c9c9d0; }
+.st .sw-mini-bar i { flex: 1; min-width: 24px; height: 4px; border-radius: 2px; background: rgba(255, 255, 255, 0.15); overflow: hidden; }
+.st .sw-mini-bar u { display: block; height: 100%; background: #4cd27a; }
+
+/* order tab: sortable strip */
+.st .strip { display: flex; flex-wrap: wrap; gap: 10px; padding: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; touch-action: none; }
+.st .tilecard { flex: 1 1 130px; min-width: 0; max-width: 170px; display: flex; flex-direction: column; align-items: center; gap: 2px; text-align: center; font-size: 13px; padding: 8px 6px; background: var(--panel2); border: 1px solid var(--line); border-radius: 12px; cursor: grab; transition: transform 160ms cubic-bezier(0.22, 1, 0.36, 1), border-color 160ms, opacity 160ms; }
+.st .tilecard:hover { transform: translateY(-2px); border-color: var(--acc); }
+.st .tilecard.dragging { transform: scale(1.04); border-color: var(--acc); background: var(--acc-soft); cursor: grabbing; }
+.st .tilecard .grip, .st .grip { color: var(--dim); letter-spacing: -3px; font-size: 16px; line-height: 1; margin-bottom: 4px; }
+
+/* design tab */
+.st .presets { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.st .preset { text-align: left; color: inherit; font: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; cursor: pointer; display: flex; flex-direction: column; gap: 4px; transition: border-color 160ms, background 160ms, transform 160ms; }
+.st .preset:hover { transform: translateY(-2px); }
+.st .preset span { color: var(--dim); font-size: 12.5px; }
+.st .preset.sel { border-color: var(--acc); box-shadow: 0 0 0 1px var(--acc); }
+.st .swatch { height: 62px; border-radius: 12px; margin-bottom: 8px; display: flex; align-items: center; justify-content: center; gap: 7px; }
+.st .swatch i { width: 22px; height: 22px; border-radius: 7px; background: rgba(255, 255, 255, 0.35); }
+.st .sw-glass { background: linear-gradient(135deg, #e0572f, #6e2a5c 55%, #1d2b4f); }
+.st .sw-dark { background: linear-gradient(135deg, #1c1c22, #0e0e12); }
+.st .sw-light { background: linear-gradient(135deg, #f3f4f8, #cfd3de); }
+.st .sw-light i { background: rgba(0, 0, 0, 0.18); }
+.st .sub-h { margin: 28px 0 12px; font-size: 14px; font-weight: 700; }
+.st .icons-pick { display: flex; flex-wrap: wrap; gap: 10px; }
+.st .ipick { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 92px; padding: 14px 8px 10px; border-radius: 14px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); font: inherit; font-size: 12px; cursor: pointer; transition: border-color 140ms, transform 140ms; }
+.st .ipick:hover { transform: translateY(-1px); }
+.st .ipick.sel { border-color: var(--acc); box-shadow: 0 0 0 1px var(--acc); }
+.st .accents { display: flex; gap: 12px; }
+.st .accent { width: 28px; height: 28px; border-radius: 50%; border: 2px solid transparent; box-shadow: inset 0 0 0 3px var(--bg); cursor: pointer; padding: 0; }
+.st .accent.sel { border-color: var(--fg); }
+.st button:focus-visible, .st .sw:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
+.st .navfoot .keybtn { width: 100%; box-sizing: border-box; text-align: center; overflow: hidden; text-overflow: ellipsis; }
+.st .pvbox { width: 260px; }
+.st .card .act { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+.st .card .act .r1 { display: flex; align-items: center; gap: 10px; }
+.st .card .act .r2 { display: flex; gap: 8px; }
+.st .card .act .r2:empty { display: none; }
+.st .monpick { display: flex; gap: 12px; flex-wrap: wrap; }
+.st .mon { display: flex; justify-content: flex-end; flex-direction: column; align-items: center; gap: 6px; width: 150px; padding: 14px 10px 12px; border-radius: 14px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); font: inherit; cursor: pointer; transition: border-color 140ms, transform 140ms; }
+.st .mon:hover { transform: translateY(-1px); }
+.st .mon.sel { border-color: var(--acc); box-shadow: 0 0 0 1px var(--acc); }
+.st .mon-box { display: grid; place-items: center; box-sizing: border-box; flex: none; background: var(--panel2); border: 2px solid var(--line); border-radius: 6px; font: 700 18px "Segoe UI Variable", "Segoe UI", sans-serif; color: var(--dim); }
+.st .mon.sel .mon-box { border-color: var(--acc); color: var(--acc-text); }
+.st .mon span:last-child { color: var(--dim); font-size: 11.5px; }
+.st .keybtn:has(> svg) { display: inline-flex; align-items: center; gap: 7px; }
+
+/* divider switches between the tiles in the order strip */
+.st .divbtn { align-self: stretch; flex: none; width: 18px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 8px; background: transparent; cursor: pointer; }
+.st .divbtn i { display: block; width: 2px; height: 70%; border-radius: 2px; background: var(--line); opacity: 0.6; transition: background 140ms, opacity 140ms, height 140ms; }
+.st .divbtn:hover { background: var(--panel2); }
+.st .divbtn:hover i { background: var(--acc); opacity: 1; }
+.st .divbtn.on i { background: var(--acc); opacity: 1; height: 85%; box-shadow: 0 0 8px var(--acc-soft); }
+
+.st .colorrow { display: flex; align-items: center; gap: 14px; margin-top: 16px; }
+.st .colorlab { width: 150px; }
+.st .accent.custom { position: relative; overflow: hidden; background: conic-gradient(#ff5a5a, #ffd23f, #3fd07a, #2ccfc6, #5b8cff, #a78bfa, #ff5a5a); }
+.st .accent.custom input { position: absolute; inset: -6px; width: 40px; height: 40px; opacity: 0; cursor: pointer; }
+
+.st .bk { margin-top: 6px; font-size: 12px; font-weight: 600; }
+.st .bk.ok { color: #3fd07a; }
+.st .bk.err { color: #ff7b6b; }
+.st .keybtn:disabled { opacity: 0.5; cursor: default; }

@@ -52,6 +52,20 @@ unsafe extern "system" fn subclass(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM,
 }
 
 static BLUR: AtomicBool = AtomicBool::new(false);
+/// Fill 0: hide the blur entirely so the desktop shows through.
+static CLEAR: AtomicBool = AtomicBool::new(false);
+
+/// Main thread only.
+pub fn set_clear(fill: f32) {
+    CLEAR.store(fill < 0.01, Ordering::Relaxed);
+    // The blur layer brings its own gray tint: fade it in with the fill, so low values are nearly clear rather than jumping from none to a frosted bar.
+    BACKDROP.with_borrow(|b| {
+        if let Some(b) = b {
+            let _ = b.visual.SetOpacity((fill / 0.3).clamp(0.0, 1.0));
+        }
+    });
+    set_blur(HWND(std::ptr::null_mut()));
+}
 
 /// Whether DWM blur is live behind the pill (false: frontend should paint an opaque pill).
 pub fn blur_active() -> bool {
@@ -101,7 +115,7 @@ fn create_backdrop(hwnd: HWND) -> windows::core::Result<Backdrop> {
 /// paints a solid pill. Must run on the window's thread.
 fn set_blur(_hwnd: HWND) -> bool {
     let want = transparency_enabled();
-    let blur = BACKDROP.with_borrow(|b| b.as_ref().is_some_and(|b| b.visual.SetIsVisible(want).is_ok())) && want;
+    let blur = BACKDROP.with_borrow(|b| b.as_ref().is_some_and(|b| b.visual.SetIsVisible(want && !CLEAR.load(Ordering::Relaxed)).is_ok())) && want;
     log::info!("[glass] transparency effects {}, blur {}", if want { "on" } else { "off" }, blur);
     BLUR.store(blur, Ordering::Relaxed);
     blur
@@ -143,7 +157,8 @@ const HIT_SLACK: i32 = 2;
 /// area, plus HIT_SLACK, the window's hit region. All arguments are CSS px. Window's thread only.
 pub fn set_region(hwnd: HWND, x: f64, width: f64, height: f64, radius: f64) {
     let dpi = unsafe { GetDpiForWindow(hwnd) }.max(96);
-    let (l, w, h, r) = (phys(x, dpi), phys(width, dpi), phys(height, dpi), phys(radius, dpi));
+    let z = super::zoom();
+    let (l, w, h, r) = (phys(x, dpi) * z, phys(width, dpi) * z, phys(height, dpi) * z, phys(radius, dpi) * z);
     BACKDROP.with_borrow(|b| {
         if let Some(b) = b {
             let size = Vector2 { X: w as f32, Y: h as f32 };

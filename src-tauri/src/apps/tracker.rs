@@ -39,11 +39,104 @@ pub struct AppEntry {
     pub running: bool,
     pub focused: bool,
     pub window_count: u32,
+    /// Unread count read from the window titles, e.g. "(3) Discord"; 0 when none.
+    pub badge: u32,
+    /// A window of the app is flashing for attention.
+    pub attention: bool,
 }
 
 struct Ctx {
     app: AppHandle,
-    pins: Vec<Pin>,
+}
+
+/// Pins in dock order; replaced live when the user pins or unpins (or the Windows taskbar's pins change).
+static PINS: Mutex<Vec<Pin>> = Mutex::new(Vec::new());
+/// Windows that asked for attention (FlashWindow), until they are activated or closed.
+static FLASH: Mutex<std::collections::BTreeSet<isize>> = Mutex::new(std::collections::BTreeSet::new());
+static SHELLHOOK_MSG: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+static HOOK_HWND: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
+static THREAD: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+const WM_PINS: u32 = WM_APP + 7;
+
+/// Unread count in a window title: "(3) Name", "[3] Name" or "Name (3)". 0 when there is none.
+fn title_badge(t: &str) -> u32 {
+    let t = t.trim();
+    let num = |s: &str| s.parse::<u32>().ok().filter(|n| (1..=999).contains(n));
+    if let Some(r) = t.strip_prefix('(').or_else(|| t.strip_prefix('[')) {
+        if let Some(end) = r.find([')', ']']) {
+            if let Some(n) = num(&r[..end]) {
+                return n;
+            }
+        }
+    }
+    if t.ends_with(')') || t.ends_with(']') {
+        if let Some(i) = t.rfind(['(', '[']) {
+            if let Some(n) = num(&t[i + 1..t.len() - 1]) {
+                return n;
+            }
+        }
+    }
+    0
+}
+
+/// Browsers put page and extension counters in their titles; those are not unread messages.
+fn is_browser(exe: &str) -> bool {
+    let stem = stem(exe).to_lowercase();
+    ["chrome", "msedge", "firefox", "brave", "opera", "vivaldi", "arc", "chromium", "iexplore", "zen", "helium", "thorium", "librewolf", "waterfox"].contains(&stem.as_str())
+}
+
+/// A hidden window that receives the shell's hook messages (flashing windows, activation).
+unsafe fn shell_hook() {
+    use windows::core::w;
+    use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+    unsafe {
+        let Ok(hinst) = GetModuleHandleW(None) else { return };
+        let class = w!("AteryaShellHook");
+        let wc = WNDCLASSW { lpfnWndProc: Some(hook_proc), hInstance: hinst.into(), lpszClassName: class, ..Default::default() };
+        RegisterClassW(&wc);
+        let Ok(h) = CreateWindowExW(WS_EX_TOOLWINDOW, class, w!(""), WS_POPUP, 0, 0, 0, 0, None, None, Some(hinst.into()), None) else { return };
+        SHELLHOOK_MSG.store(RegisterWindowMessageW(w!("SHELLHOOK")), std::sync::atomic::Ordering::Relaxed);
+        let _ = RegisterShellHookWindow(h);
+        HOOK_HWND.store(h.0 as isize, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
+unsafe extern "system" fn hook_proc(h: HWND, msg: u32, wp: windows::Win32::Foundation::WPARAM, lp: LPARAM) -> windows::Win32::Foundation::LRESULT {
+    if msg == WM_PINS {
+        if GATE.with_borrow_mut(Gate::mark) {
+            unsafe { arm_timer() };
+        }
+        return windows::Win32::Foundation::LRESULT(0);
+    }
+    if msg == SHELLHOOK_MSG.load(std::sync::atomic::Ordering::Relaxed) && msg != 0 {
+        let changed = match wp.0 as u32 {
+            0x8006 => FLASH.lock().unwrap().insert(lp.0), // HSHELL_FLASH
+            0x0004 | 0x8004 => FLASH.lock().unwrap().remove(&lp.0), // window activated
+            _ => false,
+        };
+        if changed && GATE.with_borrow_mut(Gate::mark) {
+            unsafe { arm_timer() };
+        }
+        return windows::Win32::Foundation::LRESULT(0);
+    }
+    unsafe { DefWindowProcW(h, msg, wp, lp) }
+}
+
+/// Replace the pins and refresh the row.
+pub fn set_pins(pins: Vec<Pin>) {
+    *PINS.lock().unwrap() = pins;
+    // A window message, not a thread message: nested COM loops inside refresh() would swallow the latter.
+    let h = HOOK_HWND.load(std::sync::atomic::Ordering::Relaxed);
+    if h != 0 {
+        unsafe {
+            let _ = PostMessageW(Some(HWND(h as *mut _)), WM_PINS, windows::Win32::Foundation::WPARAM(0), LPARAM(0));
+        }
+    }
+}
+
+/// The dock entry with this id, as of the last refresh.
+pub fn entry(id: &str) -> Option<AppEntry> {
+    LAST.lock().unwrap().iter().find(|e| e.id.eq_ignore_ascii_case(id)).cloned()
 }
 
 static CTX: OnceLock<Ctx> = OnceLock::new();
@@ -55,6 +148,11 @@ static GROUPS: Mutex<Option<HashMap<String, GroupState>>> = Mutex::new(None);
 static LAST: Mutex<Vec<AppEntry>> = Mutex::new(Vec::new());
 
 /// Group state for a button id (pin id or group id), as of the last refresh.
+/// The nth app in dock order (Win+1 is index 0).
+pub fn nth_id(n: usize) -> Option<String> {
+    LAST.lock().unwrap().get(n).map(|e| e.id.clone())
+}
+
 pub fn group_state(id: &str) -> Option<GroupState> {
     GROUPS.lock().unwrap().as_ref()?.get(&id.to_lowercase()).cloned()
 }
@@ -88,12 +186,15 @@ pub fn minimize(hwnd: isize) {
 /// Spawns the tracker thread: initial enumeration, then WinEvent hooks drive refreshes.
 // shortcut: pins are read once at start so config edits need a restart, upgrade when pin editing lands.
 pub fn start(app: AppHandle, pins: Vec<Pin>) {
-    if CTX.set(Ctx { app, pins }).is_err() {
+    *PINS.lock().unwrap() = pins;
+    if CTX.set(Ctx { app }).is_err() {
         return;
     }
     std::thread::spawn(|| unsafe {
         let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+        THREAD.store(windows::Win32::System::Threading::GetCurrentThreadId(), std::sync::atomic::Ordering::Relaxed);
         GATE.with_borrow_mut(Gate::startup);
+        shell_hook();
         run_refresh(false);
         // create..hide, namechange, foreground, minimizestart..end
         for (lo, hi) in [(0x8000, 0x8003), (0x800C, 0x800C), (0x0003, 0x0003), (0x0016, 0x0017)] {
@@ -101,6 +202,11 @@ pub fn start(app: AppHandle, pins: Vec<Pin>) {
         }
         let mut msg = MSG::default();
         while GetMessageW(&mut msg, None, 0, 0).as_bool() {
+            if msg.hwnd.0.is_null() && msg.message == WM_PINS {
+                GATE.with_borrow_mut(Gate::startup); // marks dirty
+                run_refresh(false);
+                continue;
+            }
             let _ = TranslateMessage(&msg);
             DispatchMessageW(&msg);
         }
@@ -229,11 +335,11 @@ unsafe fn info(h: HWND) -> WindowInfo {
 }
 
 /// Exe path of the window's process; None for our own windows or inaccessible processes.
-unsafe fn exe_of(h: HWND, own_pid: u32) -> Option<String> {
+unsafe fn exe_of(h: HWND, own_pid: u32, allow_own: bool) -> Option<String> {
     unsafe {
         let mut pid = 0;
         GetWindowThreadProcessId(h, Some(&mut pid));
-        if pid == 0 || pid == own_pid {
+        if pid == 0 || (pid == own_pid && !allow_own) {
             return None;
         }
         let p = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
@@ -264,6 +370,9 @@ fn stem(path: &str) -> String {
 unsafe fn refresh() {
     let Some(ctx) = CTX.get() else { return };
     let own_pid = unsafe { GetCurrentProcessId() };
+    let pins = PINS.lock().unwrap().clone();
+    // Our own windows stay out of the row, except the settings window (identified by its handle, not its title).
+    let settings_hwnd = ctx.app.get_webview_window("settings").and_then(|w| w.hwnd().ok()).map_or(0, |h| h.0 as isize);
     let mut hwnds = Vec::<HWND>::new();
     unsafe {
         let _ = EnumWindows(Some(collect), LPARAM(&mut hwnds as *mut _ as isize));
@@ -277,10 +386,15 @@ unsafe fn refresh() {
         if !is_taskbar_window(&i) {
             continue;
         }
-        let Some(exe) = (unsafe { exe_of(h, own_pid) }) else { continue };
+        // Our own windows stay out of the row, except the settings window (it is a real app window).
+        let Some(exe) = (unsafe { exe_of(h, own_pid, h.0 as isize == settings_hwnd) }) else {
+            continue;
+        };
         // shortcut: AUMID-first grouping can split a Win32 app that sets an explicit AUMID from its
         // exe-path pin, upgrade by mapping the AUMID back to its exe when that shows up.
-        let aumid = unsafe { aumid_of(h) };
+        // Explorer windows set no AUMID; group them under the id of the taskbar's File Explorer pin.
+        let aumid = unsafe { aumid_of(h) }
+            .or_else(|| exe.to_lowercase().ends_with(r"\explorer.exe").then(|| "Microsoft.Windows.Explorer".to_string()));
         let id = aumid.as_ref().map_or(exe.clone(), |a| format!("aumid:{a}"));
         let key = id.to_lowercase();
         if !found.contains_key(&key) {
@@ -294,13 +408,18 @@ unsafe fn refresh() {
             .push(Win { hwnd: h.0 as isize, title: i.title });
     }
 
+    let flash: std::collections::BTreeSet<isize> = {
+        let mut f = FLASH.lock().unwrap();
+        f.retain(|w| unsafe { IsWindow(Some(HWND(*w as *mut _))) }.as_bool());
+        f.clone()
+    };
     let fg = unsafe { GetAncestor(GetForegroundWindow(), GA_ROOT) }.0 as isize;
     let mut recent = RECENT.lock().unwrap();
     recent.retain(|w| found.values().any(|(_, f)| f.wins.iter().any(|x| x.hwnd == *w)));
     let rank = |w: &Win| recent.iter().position(|&r| r == w.hwnd).unwrap_or(usize::MAX);
 
     let mut order = ORDER.lock().unwrap();
-    let pin_keys: Vec<String> = ctx.pins.iter().map(|p| p.id.to_lowercase()).collect();
+    let pin_keys: Vec<String> = pins.iter().map(|p| p.id.to_lowercase()).collect();
     order.retain(|k| found.contains_key(k) && !pin_keys.contains(k));
     for k in seen_order {
         if !order.contains(&k) && !pin_keys.contains(&k) {
@@ -314,9 +433,11 @@ unsafe fn refresh() {
     let mut pending = Vec::new();
     let mut groups = HashMap::new();
     for (key, pinned) in keys {
-        let pin_id = ctx.pins.iter().find(|p| p.id.to_lowercase() == key).map(|p| p.id.clone());
+        let pin_id = pins.iter().find(|p| p.id.to_lowercase() == key).map(|p| p.id.clone());
+        let mut browser = false;
         let (id, name, icon_id, mut wins) = match found.remove(&key) {
             Some((id, f)) => {
+                browser = is_browser(&f.exe);
                 let (name, icon_id) =
                     if f.aumid.is_some() { (f.wins[0].title.clone(), id.clone()) } else { (stem(&f.exe), f.exe.clone()) };
                 (id, name, icon_id, f.wins)
@@ -344,6 +465,8 @@ unsafe fn refresh() {
             running: !wins.is_empty(),
             focused: state.focused.is_some(),
             window_count: wins.len() as u32,
+            badge: if browser { 0 } else { wins.iter().map(|w| title_badge(&w.title)).sum::<u32>().min(999) },
+            attention: wins.iter().any(|w| flash.contains(&w.hwnd)),
             id: pin_id.unwrap_or(id),
         });
         groups.insert(key, state);
@@ -364,7 +487,19 @@ unsafe fn refresh() {
 
 #[cfg(test)]
 mod tests {
-    use super::Gate;
+    use super::{title_badge, Gate};
+
+    #[test]
+    fn badges_from_titles() {
+        assert_eq!(title_badge("(3) Discord"), 3);
+        assert_eq!(title_badge("Telegram (12)"), 12);
+        assert_eq!(title_badge("[5] Mail"), 5);
+        assert_eq!(title_badge("Discord"), 0);
+        assert_eq!(title_badge("Report (draft)"), 0);
+        assert_eq!(title_badge("(0) Chat"), 0);
+        assert_eq!(title_badge("Plan (2024) final"), 0);
+    }
+
 
     #[test]
     fn events_coalesce_into_one_timer() {

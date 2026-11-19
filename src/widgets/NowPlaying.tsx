@@ -12,13 +12,13 @@ export function NowPlaying() {
         <span className="np-title" style={ellipsis}>{m.title}</span>
         <span className="dim np-artist" style={ellipsis}>{m.artist}</span>
       </div>
-      <div className="np-controls">
+      <div className="np-controls"><div>
         <button aria-label="Önceki" onClick={() => mediaControl("prev")}>⏮</button>
         <button aria-label={m.playing ? "Duraklat" : "Oynat"} onClick={() => mediaControl("toggle")}>
           {m.playing ? "⏸" : "▶"}
         </button>
         <button aria-label="Sonraki" onClick={() => mediaControl("next")}>⏭</button>
-      </div>
+      </div></div>
     </div>
   );
 }

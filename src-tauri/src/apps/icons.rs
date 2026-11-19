@@ -20,12 +20,30 @@ pub fn icon_for(id: &str, hwnd: Option<isize>) -> String {
     if let Some(hit) = CACHE.lock().unwrap().get_or_insert_with(Default::default).get(id) {
         return hit.clone();
     }
-    let win = hwnd.filter(|_| !id.starts_with("aumid:")).and_then(window_icon);
-    let url = win.or_else(|| shell_icon(id)).unwrap_or_default();
+    // File Explorer windows carry a generic window icon; its exe/shell icon is the real folder icon.
+    let explorer = id.to_ascii_lowercase().contains("explorer");
+    let win = hwnd.filter(|_| !id.starts_with("aumid:") && !explorer).and_then(window_icon);
+    let url = win.or_else(|| shell_icon(id)).or_else(|| hwnd.and_then(exe_icon)).unwrap_or_default();
     if !url.is_empty() {
         CACHE.lock().unwrap().get_or_insert_with(Default::default).insert(id.into(), url.clone());
     }
     url
+}
+
+/// Last resort: the window's process exe. Covers apps whose explicit AppUserModelID is not a real
+/// shell item (e.g. League of Legends sets its exe path as AUMID) and that set no window icon.
+fn exe_icon(hwnd: isize) -> Option<String> {
+    use windows::Win32::System::Threading::*;
+    unsafe {
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(HWND(hwnd as *mut _), Some(&mut pid));
+        let p = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
+        let mut buf = [0u16; 520];
+        let mut n = buf.len() as u32;
+        let ok = QueryFullProcessImageNameW(p, PROCESS_NAME_WIN32, windows::core::PWSTR(buf.as_mut_ptr()), &mut n).is_ok();
+        let _ = windows::Win32::Foundation::CloseHandle(p);
+        ok.then(|| String::from_utf16_lossy(&buf[..n as usize])).and_then(|path| shell_icon(&path))
+    }
 }
 
 fn shell_icon(id: &str) -> Option<String> {

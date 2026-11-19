@@ -14,6 +14,8 @@ pub struct DeviceBattery {
     pub percent: Option<u8>,
     pub charging: bool,
     pub connected: bool,
+    /// Last known value shown while the device sleeps (keyboard only); `percent` holds that value.
+    pub asleep: bool,
 }
 
 const VID: u16 = 0x046D;
@@ -30,9 +32,9 @@ fn read_mouse() -> Option<BatteryReading> {
     read_hidpp(0xC547, 0x01)
 }
 
-// shortcut: headset always unknown, 0AF7 has no 0xFF00 collection; replace with the PRO X 2 reader after the protocol spike.
+// 0AF7 has no HID++ collection; it speaks Centurion on page 0xFFA0.
 fn read_headset() -> Option<BatteryReading> {
-    None
+    super::centurion::read()
 }
 
 /// HID++ 1.0 short error report (0x10, 0x8F) echoing our device index, feature and function byte.
@@ -118,26 +120,50 @@ fn read_hidpp(pid: u16, idx: u8) -> Option<BatteryReading> {
         .flatten()
 }
 
-pub fn read_all() -> Vec<DeviceBattery> {
+/// One reading per device. A device that answers nothing but has answered before is reported
+/// `asleep` with its last value (keyboards doze off; the dongle stays silent until a key press).
+fn snapshot(last: &mut [Option<BatteryReading>; 3], due: [bool; 3]) -> Vec<DeviceBattery> {
     DEVICES
         .iter()
-        .map(|&(id, name, reader)| {
-            let r = reader();
-            DeviceBattery {
-                id,
-                name,
-                percent: r.map(|r| r.percent),
-                charging: r.is_some_and(|r| r.charging),
-                connected: r.is_some(),
+        .enumerate()
+        .map(|(i, &(id, name, reader))| {
+            if due[i] {
+                let r = reader();
+                if r.is_some() || id != "keyboard" {
+                    last[i] = r;
+                }
+                if r.is_none() {
+                    return DeviceBattery { id, name, percent: last[i].map(|l| l.percent), charging: false, connected: last[i].is_some(), asleep: last[i].is_some() };
+                }
             }
+            let r = last[i];
+            DeviceBattery { id, name, percent: r.map(|r| r.percent), charging: r.is_some_and(|r| r.charging), connected: r.is_some(), asleep: false }
         })
         .collect()
 }
 
+/// Mouse and headset are read every `poll_minutes`; the keyboard every KEYBOARD_POLL, so its wake-up
+/// shows quickly (and the poll itself may keep the dongle link busy). Emits only on change.
 pub fn start(app: AppHandle, poll_minutes: u64) {
-    std::thread::spawn(move || loop {
-        app.state::<Hub>().emit("battery://changed", read_all());
-        std::thread::sleep(Duration::from_secs(poll_minutes.max(1) * 60));
+    const KEYBOARD_POLL: Duration = Duration::from_secs(15);
+    std::thread::spawn(move || {
+        let mut last = [None; 3];
+        let mut prev: Option<Vec<DeviceBattery>> = None;
+        let mut slow_at = Instant::now();
+        let mut first = true;
+        loop {
+            let slow = first || slow_at.elapsed() >= Duration::from_secs(poll_minutes.max(1) * 60);
+            if slow {
+                slow_at = Instant::now();
+            }
+            first = false;
+            let now = snapshot(&mut last, [slow, slow, true]);
+            if prev.as_ref() != Some(&now) {
+                app.state::<Hub>().emit("battery://changed", now.clone());
+                prev = Some(now);
+            }
+            std::thread::sleep(KEYBOARD_POLL);
+        }
     });
 }
 
@@ -174,7 +200,7 @@ mod tests {
     #[test]
     #[ignore]
     fn probe() {
-        for d in super::read_all() {
+        for d in super::snapshot(&mut [None; 3], [true; 3]) {
             println!("{d:?}");
         }
     }

@@ -103,6 +103,41 @@ static PV: Mutex<Pv> =
 /// Bumped by every hover event; a timer acts only if nothing happened since it was armed.
 static GEN: AtomicU64 = AtomicU64::new(0);
 
+/// Whether the window preview popup is showing.
+pub fn shown() -> bool {
+    PV.lock().map(|p| p.shown).unwrap_or(false)
+}
+
+/// (feature on, modifier) read from the config each time the popup is shown.
+static BRING: Mutex<(bool, String)> = Mutex::new((false, String::new()));
+
+/// While the popup is up, pressing the configured modifier sends the hovered app's windows to the
+/// primary monitor. One thread for the process lifetime; it idles unless the popup is shown.
+fn spawn_key_watch(app: AppHandle) {
+    static ONCE: std::sync::Once = std::sync::Once::new();
+    ONCE.call_once(|| {
+        std::thread::spawn(move || {
+            let mut was_held = false;
+            loop {
+                std::thread::sleep(Duration::from_millis(25));
+                let (on, key) = BRING.lock().unwrap_or_else(|e| e.into_inner()).clone();
+                let held = on && pv().shown && !matches!(key.as_str(), "" | "always") && super::pins::key_held(&key);
+                if held && !was_held {
+                    let wins = pv().windows.clone();
+                    for &w in &wins {
+                        super::pins::move_to_main(w);
+                    }
+                    if let Some(&first) = wins.first() {
+                        tracker::activate(first);
+                    }
+                    hide(&app);
+                }
+                was_held = held;
+            }
+        });
+    });
+}
+
 fn pv() -> std::sync::MutexGuard<'static, Pv> {
     PV.lock().unwrap_or_else(|e| e.into_inner())
 }
@@ -130,6 +165,7 @@ fn ensure(app: &AppHandle) -> Result<WebviewWindow, String> {
         return Ok(w);
     }
     let w = WebviewWindowBuilder::new(app, "preview", WebviewUrl::App("index.html#preview".into()))
+        .title("")
         .transparent(true)
         .decorations(false)
         .always_on_top(true)
@@ -146,8 +182,7 @@ fn ensure(app: &AppHandle) -> Result<WebviewWindow, String> {
     w.run_on_main_thread(move || unsafe {
         let hwnd = HWND(h as *mut _);
         let _ = SetWindowSubclass(hwnd, Some(subclass), 1, 0);
-        let caption = (WS_CAPTION.0 | WS_SYSMENU.0 | WS_MINIMIZEBOX.0 | WS_MAXIMIZEBOX.0) as isize;
-        SetWindowLongPtrW(hwnd, GWL_STYLE, GetWindowLongPtrW(hwnd, GWL_STYLE) & !caption);
+        crate::nocaption::apply(h);
     })
     .map_err(|e| e.to_string())?;
     Ok(w)
@@ -185,6 +220,9 @@ fn show(app: &AppHandle, group: &str, icon_cx: f64) -> Result<(), String> {
         hide(app);
         return Ok(());
     }
+    let cfg = crate::config::Config::load(&crate::config::config_path());
+    *BRING.lock().unwrap_or_else(|e| e.into_inner()) = (cfg.bring_to_main, cfg.bring_key);
+    spawn_key_watch(app.clone());
     let win = ensure(app)?;
     let me = win.hwnd().map_err(|e| e.to_string())?;
     let dock = crate::shell::dock_hwnd();
@@ -196,7 +234,7 @@ fn show(app: &AppHandle, group: &str, icon_cx: f64) -> Result<(), String> {
     let mut dr = RECT::default();
     unsafe { GetWindowRect(dock, &mut dr) }.map_err(|e| e.to_string())?;
     let size = (px(lay.w), px(lay.h));
-    let (x, y) = place(size, dr.left + (icon_cx * k).round() as i32, dr.top - px(ABOVE_DOCK_CSS), crate::shell::primary_monitor());
+    let (x, y) = place(size, dr.left + (icon_cx * crate::shell::dock_k()).round() as i32, dr.top - px(ABOVE_DOCK_CSS), crate::shell::primary_monitor());
 
     let items: Vec<Item> = live
         .iter()

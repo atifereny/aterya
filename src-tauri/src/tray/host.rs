@@ -42,19 +42,123 @@ pub async fn tray_click(_id: String, _button: String, _x: i32, _y: i32) -> Resul
     Err("tray host unavailable; use open_tray_overflow".into())
 }
 
+/// The flyout opens next to the (hidden) taskbar; move it above the chevron at physical (x, y).
+fn find_flyout() -> Option<windows::Win32::Foundation::HWND> {
+    use windows::core::BOOL;
+    use windows::Win32::Foundation::{HWND, LPARAM};
+    use windows::Win32::UI::WindowsAndMessaging::*;
+    unsafe extern "system" fn find(h: HWND, out: LPARAM) -> BOOL {
+        let mut buf = [0u16; 128];
+        let n = unsafe { GetClassNameW(h, &mut buf) } as usize;
+        if unsafe { IsWindowVisible(h) }.as_bool() && String::from_utf16_lossy(&buf[..n]).contains("OverflowXamlIsland") {
+            unsafe { *(out.0 as *mut isize) = h.0 as isize };
+            return BOOL(0);
+        }
+        BOOL(1)
+    }
+    let mut found: isize = 0;
+    let _ = unsafe { EnumWindows(Some(find), LPARAM(&mut found as *mut isize as isize)) };
+    (found != 0).then(|| HWND(found as *mut _))
+}
+
+/// Windows shows a small "show/hide hidden icons" tooltip at the hidden taskbar's chevron
+/// (bottom-right corner), far from the dock. Hide it.
+fn hide_stray_tooltip() {
+    use windows::core::BOOL;
+    use windows::Win32::Foundation::{HWND, LPARAM, RECT};
+    use windows::Win32::UI::WindowsAndMessaging::*;
+    unsafe extern "system" fn cb(h: HWND, _: LPARAM) -> BOOL {
+        let mut buf = [0u16; 64];
+        let n = unsafe { GetClassNameW(h, &mut buf) } as usize;
+        if String::from_utf16_lossy(&buf[..n]) == "Xaml_WindowedPopupClass" && unsafe { IsWindowVisible(h) }.as_bool() {
+            let mut r = RECT::default();
+            if unsafe { GetWindowRect(h, &mut r) }.is_ok() && r.right - r.left < 400 && r.bottom - r.top < 100 {
+                let _ = unsafe { ShowWindow(h, SW_HIDE) };
+            }
+        }
+        BOOL(1)
+    }
+    let _ = unsafe { EnumWindows(Some(cb), LPARAM(0)) };
+}
+
+/// Emits `tray://flyout` (bool) so the chevron can rotate; ends when the flyout closes.
+fn watch_flyout(app: AppHandle) {
+    use tauri::Emitter;
+    let _ = app.emit("tray://flyout", true);
+    std::thread::spawn(move || {
+        while find_flyout().is_some() {
+            std::thread::sleep(std::time::Duration::from_millis(80));
+        }
+        let _ = app.emit("tray://flyout", false);
+    });
+}
+
+fn reposition_flyout(app: &AppHandle, x: i32, y: i32) {
+    use windows::Win32::Foundation::RECT;
+    use windows::Win32::UI::WindowsAndMessaging::*;
+    // Tooltip hiding outlives the move, on its own thread, so a new click is not blocked meanwhile.
+    std::thread::spawn(|| {
+        for _ in 0..700 {
+            std::thread::sleep(std::time::Duration::from_millis(4));
+            hide_stray_tooltip();
+        }
+    });
+    for _ in 0..700 {
+        // Tight poll: the flyout first appears at the hidden taskbar (bottom-right); move it before it is seen.
+        std::thread::sleep(std::time::Duration::from_millis(4));
+        let Some(h) = find_flyout() else { continue };
+        let mut r = RECT::default();
+        if unsafe { GetWindowRect(h, &mut r) }.is_err() { return; }
+        let (w, ht) = (r.right - r.left, r.bottom - r.top);
+        let _ = unsafe { SetWindowPos(h, None, x - w / 2, y - ht - 12, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE) };
+        watch_flyout(app.clone());
+        return;
+    }
+}
+
 /// Win+B focuses the tray's "Show hidden icons" button; Enter opens the flyout.
 #[tauri::command]
-pub async fn open_tray_overflow() -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(|| {
+pub async fn open_tray_overflow(app: AppHandle, x: i32, y: i32, was_open: bool) -> Result<(), String> {
+    // The flyout closes itself on an outside click, so "open" is judged at pointer-down (was_open).
+    if was_open {
+        tauri::async_runtime::spawn_blocking(|| {
+            use windows::Win32::UI::Input::KeyboardAndMouse::*;
+            if find_flyout().is_some() {
+                let k = |up: bool| INPUT { r#type: INPUT_KEYBOARD, Anonymous: INPUT_0 { ki: KEYBDINPUT { wVk: VK_ESCAPE, dwFlags: if up { KEYEVENTF_KEYUP } else { KEYBD_EVENT_FLAGS(0) }, ..Default::default() } } };
+                unsafe { SendInput(&[k(false), k(true)], size_of::<INPUT>() as i32) };
+            }
+        })
+        .await
+        .map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+    // One run at a time: a second click mid-run would send a stray Enter to whatever has focus.
+    static BUSY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if BUSY.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return Ok(());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
         use windows::Win32::UI::Input::KeyboardAndMouse::*;
         let key = |vk: VIRTUAL_KEY, up: bool| INPUT {
             r#type: INPUT_KEYBOARD,
             Anonymous: INPUT_0 { ki: KEYBDINPUT { wVk: vk, dwFlags: if up { KEYEVENTF_KEYUP } else { KEYBD_EVENT_FLAGS(0) }, ..Default::default() } },
         };
         let send = |v: &[INPUT]| unsafe { SendInput(v, size_of::<INPUT>() as i32) };
+        // Flyout already open: the button toggles it closed. Enter now would activate its focused icon (Claude).
+        if find_flyout().is_some() {
+            send(&[key(VK_ESCAPE, false), key(VK_ESCAPE, true)]);
+            BUSY.store(false, std::sync::atomic::Ordering::SeqCst);
+            return;
+        }
+        // Windows drops input injected while an elevated window (Task Manager) has the foreground, so
+        // take the foreground with the dock first.
+        crate::apps::tracker::activate(crate::shell::dock_hwnd().0 as isize);
+        std::thread::sleep(std::time::Duration::from_millis(60));
         send(&[key(VK_LWIN, false), key(VK_B, false), key(VK_B, true), key(VK_LWIN, true)]);
         std::thread::sleep(std::time::Duration::from_millis(250));
         send(&[key(VK_RETURN, false), key(VK_RETURN, true)]);
+        reposition_flyout(&app, x, y);
+        BUSY.store(false, std::sync::atomic::Ordering::SeqCst);
     })
     .await
     .map_err(|e| e.to_string())

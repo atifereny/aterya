@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "custom_taskbar",
+  "productName": "Aterya",
   "version": "0.1.0",
   "identifier": "dev.local.customtaskbar",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "custom_taskbar",
+        "title": "Aterya",
         "width": 800,
         "height": 100,
         "transparent": true,

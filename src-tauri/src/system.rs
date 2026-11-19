@@ -18,7 +18,7 @@ use windows::{
         },
         System::Com::{CLSCTX_ALL, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx},
         UI::Input::KeyboardAndMouse::{
-            INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, SendInput, VIRTUAL_KEY, VK_A, VK_LWIN, VK_N,
+            INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, SendInput, VIRTUAL_KEY, VK_A, VK_D, VK_LWIN, VK_N, VK_SPACE,
         },
     },
     core::{PCWSTR, implement},
@@ -233,6 +233,43 @@ pub async fn open_quick_settings() -> Result<(), String> {
 #[tauri::command]
 pub async fn open_notifications() -> Result<(), String> {
     shortcut(VK_N).await
+}
+
+#[derive(serde::Serialize)]
+pub struct Lang {
+    /// "TR", "EN"
+    code: String,
+    /// "Türkçe"
+    name: String,
+}
+
+/// Keyboard layout of the focused window (Alt+Shift changes it per window, so read it where the typing happens).
+#[tauri::command]
+pub fn lang_get() -> Lang {
+    use windows::Win32::Globalization::{GetLocaleInfoW, LOCALE_SISO639LANGNAME, LOCALE_SNATIVELANGNAME};
+    use windows::Win32::UI::{Input::KeyboardAndMouse::GetKeyboardLayout, WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId}};
+    unsafe {
+        let tid = GetWindowThreadProcessId(GetForegroundWindow(), None);
+        let langid = (GetKeyboardLayout(tid).0 as usize & 0xFFFF) as u32;
+        let info = |t: u32| {
+            let mut b = [0u16; 64];
+            let n = GetLocaleInfoW(langid, t, Some(&mut b));
+            String::from_utf16_lossy(&b[..(n.max(1) - 1) as usize])
+        };
+        Lang { code: info(LOCALE_SISO639LANGNAME).to_uppercase(), name: info(LOCALE_SNATIVELANGNAME) }
+    }
+}
+
+/// Win+Space: next keyboard layout.
+#[tauri::command]
+pub async fn lang_switch() -> Result<(), String> {
+    shortcut(VK_SPACE).await
+}
+
+/// Win+D: shows the desktop, or brings the windows back when pressed again.
+#[tauri::command]
+pub async fn show_desktop() -> Result<(), String> {
+    shortcut(VK_D).await
 }
 
 #[cfg(test)]

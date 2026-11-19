@@ -36,10 +36,130 @@ impl Default for PollCfg {
     }
 }
 
+/// Widgets the dock can show, in default order. Start button and app row are fixed.
+pub const WIDGETS: [&str; 25] = ["apps", "nowplaying", "weather", "claude", "batteries", "tray", "system", "clock", "screentime", "topcpu", "topram", "brightness", "notifications", "showdesktop", "batteryring", "cpuring", "gpuring", "memory", "storage", "netspeed", "keyboardlang", "microphone", "recyclebin", "stickynotes", "clipboard"];
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct LayoutCfg {
+    pub order: Vec<String>,
+    pub hidden: Vec<String>,
+    /// Widgets followed by a divider line on the dock (the user places them; none by default).
+    pub dividers: Vec<String>,
+}
+
+impl Default for LayoutCfg {
+    fn default() -> Self {
+        Self { order: WIDGETS.iter().map(|s| s.to_string()).collect(), hidden: vec![], dividers: vec![] }
+    }
+}
+
+impl LayoutCfg {
+    /// Known ids only, no duplicates; widgets missing from `order` are appended in default order.
+    pub fn sanitized(mut self) -> Self {
+        let mut seen = Vec::new();
+        self.order.retain(|w| WIDGETS.contains(&w.as_str()) && !seen.contains(w) && { seen.push(w.clone()); true });
+        let had_any = !self.order.is_empty();
+        for w in WIDGETS {
+            if !self.order.iter().any(|o| o == w) {
+                // "apps" (Start + app icons) used to be fixed at the left: new configs keep it there.
+                let at = if w == "apps" { 0 } else { self.order.len() };
+                self.order.insert(at, w.to_string());
+                // A widget added in a later version stays off until the user turns it on.
+                if had_any && w != "apps" && !self.hidden.iter().any(|h| h == w) {
+                    self.hidden.push(w.to_string());
+                }
+            }
+        }
+        self.hidden.retain(|w| WIDGETS.contains(&w.as_str()));
+        self.hidden.dedup();
+        self.dividers.retain(|w| WIDGETS.contains(&w.as_str()));
+        self.dividers.dedup();
+        self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ThemeCfg {
+    /// "glass" | "dark" | "light"
+    pub preset: String,
+    /// Pill fill strength, 0.0..=0.7.
+    pub opacity: f64,
+}
+
+impl Default for ThemeCfg {
+    fn default() -> Self {
+        Self { preset: "glass".into(), opacity: 0.14 }
+    }
+}
+
+impl ThemeCfg {
+    pub fn sanitized(mut self) -> Self {
+        if !["glass", "dark", "light"].contains(&self.preset.as_str()) {
+            self.preset = "glass".into();
+        }
+        self.opacity = if self.opacity.is_finite() { self.opacity.clamp(0.0, 0.7) } else { 0.14 };
+        self
+    }
+}
+
+pub const BRING_KEYS: [&str; 9] = ["always", "lctrl", "rctrl", "lalt", "ralt", "lshift", "rshift", "lwin", "rwin"];
+
+/// A widget living in its own window instead of the dock. x/y are physical screen pixels.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct FloatCfg {
+    pub id: String,
+    pub x: i32,
+    pub y: i32,
+    pub pinned: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Config {
+    pub layout: LayoutCfg,
+    pub theme: ThemeCfg,
+    /// Clicking an app in the dock moves its window to the primary monitor.
+    pub bring_to_main: bool,
+    /// Modifier that must be held for that: "always" or one of KEYS.
+    pub bring_key: String,
+    pub floating: Vec<FloatCfg>,
+    /// Per-widget size factor (0.6..=3.0), missing means 1.
+    pub scales: std::collections::HashMap<String, f64>,
+    /// Brightness widget: "row" (side by side) or "column" (stacked).
+    pub brightness_layout: String,
+    /// Open-app marker under dock icons: "dot", "bigdot" or "line".
+    pub indicator: String,
+    /// Look of the start button: "windows", "classic", "outline", "rounded", "aterya", "grid" or "dots".
+    pub start_icon: String,
+    /// Device name of the screen the dock sits on (e.g. `\.\DISPLAY2`); empty means the primary screen.
+    pub dock_monitor: String,
+    /// Dock size factor (0.7..=1.5); 0 (missing) means 1.
+    pub dock_scale: f64,
+    /// Gap between the dock and the screen edge in CSS px (0..=24); missing means 4.
+    pub dock_gap: Option<f64>,
+    /// The dock slides away from the screen edge until the pointer or the Windows key calls it back.
+    pub dock_autohide: bool,
+    /// App icons lift and grow under the pointer; missing means on.
+    pub hover_lift: Option<bool>,
+    /// Thickness of the divider lines on the dock in px (1..=6); missing means 1.
+    pub divider_width: Option<f64>,
+    /// App icon size in px (20..=44, missing = 30) and the gap between icons (0..=16, missing = 6).
+    pub icon_size: Option<f64>,
+    pub icon_gap: Option<f64>,
+    /// Dock look: corner radius in px (0..=32, missing 22), border width in px (0..=4, missing 1), text color and
+    /// accent as #rrggbb (empty = the theme's own).
+    pub dock_radius: Option<f64>,
+    pub dock_border: Option<f64>,
+    pub dock_text: String,
+    pub dock_accent: String,
+    /// Start with Windows: None until the first run decided, then the user's choice.
+    pub autostart: Option<bool>,
     pub pins: Vec<Pin>,
+    /// Ids of Windows-taskbar pins the user removed from the dock; they stay off the dock.
+    pub hidden_pins: Vec<String>,
     pub weather: WeatherCfg,
     pub poll_minutes: PollCfg,
 }
@@ -82,6 +202,24 @@ pub fn config_path() -> PathBuf {
 }
 
 #[cfg(test)]
+mod layout_tests {
+    use super::*;
+    #[test]
+    fn layout_sanitized() {
+        let l = LayoutCfg { order: vec!["clock".into(), "bogus".into(), "clock".into(), "weather".into()], hidden: vec!["x".into(), "tray".into()], dividers: vec!["clock".into(), "nope".into()] }.sanitized();
+        assert_eq!(l.dividers, ["clock"]);
+        assert_eq!(l.order[..3], ["apps", "clock", "weather"]);
+        assert_eq!(l.order.len(), WIDGETS.len());
+        assert!(l.hidden.contains(&"tray".to_string()) && !l.hidden.contains(&"x".to_string()));
+    }
+    #[test]
+    fn theme_sanitized() {
+        let t = ThemeCfg { preset: "neon".into(), opacity: 9.0 }.sanitized();
+        assert_eq!((t.preset.as_str(), t.opacity), ("glass", 0.7));
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -121,6 +259,7 @@ mod tests {
             pins: vec![Pin { id: "C:/a.exe".into() }, Pin { id: "aumid:X!App".into() }],
             weather: WeatherCfg { city: "Ankara".into(), lat: Some(39.9), lon: Some(32.8) },
             poll_minutes: PollCfg { battery: 1, weather: 2, claude: 3 },
+            ..Default::default()
         };
         c.save(&p).unwrap();
         assert_eq!(Config::load(&p), c);
