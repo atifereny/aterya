@@ -153,6 +153,9 @@ pub struct Config {
     /// accent as #rrggbb (empty = the theme's own).
     pub dock_radius: Option<f64>,
     pub dock_border: Option<f64>,
+    /// Look for new releases automatically (missing = yes) and install them without asking (default no).
+    pub auto_update_check: Option<bool>,
+    pub auto_update_install: bool,
     pub dock_text: String,
     pub dock_accent: String,
     /// Start with Windows: None until the first run decided, then the user's choice.

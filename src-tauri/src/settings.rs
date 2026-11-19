@@ -29,6 +29,8 @@ pub struct Settings {
     pub dock_border: f64,
     pub dock_text: String,
     pub dock_accent: String,
+    pub auto_update_check: bool,
+    pub auto_update_install: bool,
 }
 
 pub(crate) fn dock_scale(c: &Config) -> f64 {
@@ -72,7 +74,7 @@ pub(crate) fn current() -> Result<Config, String> {
 pub(crate) fn save_and_emit(app: &AppHandle, cfg: &Config) -> Result<(), String> {
     let r = cfg.save(&config::config_path());
     r.map_err(|e| e.to_string())?;
-    let _ = app.emit("settings://changed", Settings { layout: cfg.layout.clone(), theme: cfg.theme.clone(), bring_to_main: cfg.bring_to_main, bring_key: cfg.bring_key.clone(), floating: cfg.floating.clone(), scales: cfg.scales.clone(), brightness_layout: cfg.brightness_layout.clone(), indicator: cfg.indicator.clone(), start_icon: cfg.start_icon.clone(), dock_monitor: cfg.dock_monitor.clone(), dock_scale: dock_scale(cfg), dock_gap: dock_gap(cfg), dock_autohide: cfg.dock_autohide, hover_lift: cfg.hover_lift.unwrap_or(true), divider_width: divider_width(cfg), icon_size: icon_size(cfg), icon_gap: icon_gap(cfg), dock_radius: dock_radius(cfg), dock_border: dock_border(cfg), dock_text: valid_color(&cfg.dock_text), dock_accent: valid_color(&cfg.dock_accent) });
+    let _ = app.emit("settings://changed", Settings { layout: cfg.layout.clone(), theme: cfg.theme.clone(), bring_to_main: cfg.bring_to_main, bring_key: cfg.bring_key.clone(), floating: cfg.floating.clone(), scales: cfg.scales.clone(), brightness_layout: cfg.brightness_layout.clone(), indicator: cfg.indicator.clone(), start_icon: cfg.start_icon.clone(), dock_monitor: cfg.dock_monitor.clone(), dock_scale: dock_scale(cfg), dock_gap: dock_gap(cfg), dock_autohide: cfg.dock_autohide, hover_lift: cfg.hover_lift.unwrap_or(true), divider_width: divider_width(cfg), icon_size: icon_size(cfg), icon_gap: icon_gap(cfg), dock_radius: dock_radius(cfg), dock_border: dock_border(cfg), dock_text: valid_color(&cfg.dock_text), dock_accent: valid_color(&cfg.dock_accent), auto_update_check: cfg.auto_update_check.unwrap_or(true), auto_update_install: cfg.auto_update_install });
     Ok(())
 }
 
@@ -80,7 +82,7 @@ pub(crate) fn save_and_emit(app: &AppHandle, cfg: &Config) -> Result<(), String>
 pub fn get_settings() -> Settings {
     let c = Config::load(&config::config_path());
     let (ds, dg, dw, isz, igp, dr, db) = (dock_scale(&c), dock_gap(&c), divider_width(&c), icon_size(&c), icon_gap(&c), dock_radius(&c), dock_border(&c));
-    Settings { layout: c.layout.sanitized(), theme: c.theme.sanitized(), bring_to_main: c.bring_to_main, bring_key: c.bring_key, floating: c.floating, scales: c.scales, brightness_layout: c.brightness_layout, indicator: c.indicator.clone(), dock_monitor: c.dock_monitor.clone(), dock_scale: ds, dock_gap: dg, dock_autohide: c.dock_autohide, hover_lift: c.hover_lift.unwrap_or(true), divider_width: dw, icon_size: isz, icon_gap: igp, dock_radius: dr, dock_border: db, dock_text: valid_color(&c.dock_text), dock_accent: valid_color(&c.dock_accent), start_icon: c.start_icon.clone() }
+    Settings { layout: c.layout.sanitized(), theme: c.theme.sanitized(), bring_to_main: c.bring_to_main, bring_key: c.bring_key, floating: c.floating, scales: c.scales, brightness_layout: c.brightness_layout, indicator: c.indicator.clone(), dock_monitor: c.dock_monitor.clone(), dock_scale: ds, dock_gap: dg, dock_autohide: c.dock_autohide, hover_lift: c.hover_lift.unwrap_or(true), divider_width: dw, icon_size: isz, icon_gap: igp, dock_radius: dr, dock_border: db, dock_text: valid_color(&c.dock_text), dock_accent: valid_color(&c.dock_accent), auto_update_check: c.auto_update_check.unwrap_or(true), auto_update_install: c.auto_update_install, start_icon: c.start_icon.clone() }
 }
 
 #[tauri::command]
@@ -161,6 +163,14 @@ pub async fn set_look(app: AppHandle, radius: f64, border: f64, text: String, ac
     save_and_emit(&app, &c)?;
     crate::shell::apply_dock(&app); // the glass clip follows the new radius
     Ok(())
+}
+
+#[tauri::command]
+pub fn set_auto_update(app: AppHandle, check: bool, install: bool) -> Result<(), String> {
+    let mut c = current()?;
+    c.auto_update_check = Some(check);
+    c.auto_update_install = check && install;
+    save_and_emit(&app, &c)
 }
 
 #[tauri::command]
@@ -293,7 +303,7 @@ mod tests {
     use super::*;
     #[test]
     fn defaults_roundtrip_through_sanitize() {
-        let s = Settings { layout: LayoutCfg::default().sanitized(), theme: ThemeCfg::default().sanitized(), bring_to_main: false, bring_key: String::new(), floating: vec![], scales: Default::default(), brightness_layout: String::new(), indicator: String::new(), start_icon: String::new(), dock_monitor: String::new(), dock_scale: 1.0, dock_gap: 4.0, dock_autohide: false, hover_lift: true, divider_width: 1.0, icon_size: 30.0, icon_gap: 6.0, dock_radius: 22.0, dock_border: 1.0, dock_text: String::new(), dock_accent: String::new() };
+        let s = Settings { layout: LayoutCfg::default().sanitized(), theme: ThemeCfg::default().sanitized(), bring_to_main: false, bring_key: String::new(), floating: vec![], scales: Default::default(), brightness_layout: String::new(), indicator: String::new(), start_icon: String::new(), dock_monitor: String::new(), dock_scale: 1.0, dock_gap: 4.0, dock_autohide: false, hover_lift: true, divider_width: 1.0, icon_size: 30.0, icon_gap: 6.0, dock_radius: 22.0, dock_border: 1.0, dock_text: String::new(), dock_accent: String::new(), auto_update_check: true, auto_update_install: false };
         assert_eq!(s.layout, LayoutCfg::default());
         assert_eq!(s.theme, ThemeCfg::default());
     }

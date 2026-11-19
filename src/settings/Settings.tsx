@@ -1,7 +1,8 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { listen } from "@tauri-apps/api/event";
 import { StartIcon, START_ICONS } from "../lib/StartIcon";
-import { autostartGet, autostartSet, backupExport, backupImport, setAutohide, setHoverLift, setDividerWidth, setIcons, setLook, demo, monitorsList, setDock, type MonitorInfo, requestState, setIndicator, setStartIcon, floatClose, floatOpen, floatPin, quitApp, setBrightnessLayout, setWidgetScale, restartApp, setBringKey, setBringToMain, setLayout, setTheme, useSettings, type FloatCfg, type LayoutCfg, type Settings as Cfg, type ThemeCfg, type WidgetId } from "../lib/ipc";
+import { autostartGet, autostartSet, backupExport, backupImport, setAutoUpdate, updateCheck, updateInstall, updateState, type UpdateInfo, setAutohide, setHoverLift, setDividerWidth, setIcons, setLook, demo, monitorsList, setDock, type MonitorInfo, requestState, setIndicator, setStartIcon, floatClose, floatOpen, floatPin, quitApp, setBrightnessLayout, setWidgetScale, restartApp, setBringKey, setBringToMain, setLayout, setTheme, useSettings, type FloatCfg, type LayoutCfg, type Settings as Cfg, type ThemeCfg, type WidgetId } from "../lib/ipc";
 import { WIDGET_INFO } from "../lib/widgets";
 import { Zoom } from "../lib/Zoom";
 import "./settings.css";
@@ -677,6 +678,76 @@ function KeyPicker({ value }: { value: string }) {
   );
 }
 
+const mb = (b: number) => `${(b / 1048576).toFixed(1)} MB`;
+
+/** Version, check for updates, install (download, replace, restart) and the automatic options. */
+function Updates({ s }: { s: Cfg }) {
+  const [u, setU] = useState<UpdateInfo | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [prog, setProg] = useState<{ done: number; total: number } | null>(null);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    void updateState().then(setU);
+    const a = listen<UpdateInfo>("update://state", (e) => setU(e.payload));
+    const b = listen<{ done: number; total: number }>("update://progress", (e) => setProg(e.payload));
+    return () => {
+      void a.then((f) => f());
+      void b.then((f) => f());
+    };
+  }, []);
+  const check = () => {
+    setBusy(true);
+    setErr("");
+    updateCheck().then(setU).finally(() => setBusy(false));
+  };
+  const install = () => {
+    setBusy(true);
+    setErr("");
+    setProg({ done: 0, total: u?.size ?? 0 });
+    updateInstall().catch((e) => {
+      setErr(String(e));
+      setBusy(false);
+      setProg(null);
+    });
+  };
+  const status = !u ? "" : busy && prog ? "İndiriliyor…" : u.error ? u.error : u.available ? `Yeni sürüm hazır: ${u.latest} (şu an ${u.current})` : u.checked ? `Güncelsin (${u.current})` : `Sürüm ${u.current}`;
+  return (
+    <div className="card static" style={{ flexWrap: "wrap" }}>
+      <div className="meta">
+        <b>Güncellemeler</b>
+        <span className={u?.error || err ? "bk err" : u?.available ? "bk ok" : ""}>{err || status}</span>
+        {u?.available && u.notes && <span className="upnotes">{u.notes.split("\n").filter((l) => l.trim().startsWith("-") || l.trim().startsWith("*")).slice(0, 4).join("\n")}</span>}
+        {busy && prog && prog.total > 0 && (
+          <span className="upbar">
+            <i style={{ width: `${Math.min(100, (prog.done / prog.total) * 100)}%` }} />
+          </span>
+        )}
+        {busy && prog && <span>{mb(prog.done)} / {mb(prog.total)} · bitince uygulama kendini yeniden başlatır</span>}
+      </div>
+      <div className="keypick">
+        <button className="keybtn" disabled={busy} onClick={check}>
+          {busy && !prog ? "Denetleniyor…" : "Güncellemeleri denetle"}
+        </button>
+        {u?.available && u.canInstall && (
+          <button className="keybtn rec" disabled={busy} onClick={install}>
+            İndir ve yükle{u.size ? ` (${mb(u.size)})` : ""}
+          </button>
+        )}
+      </div>
+      <div className="upopts">
+        <label>
+          <Switch on={s.autoUpdateCheck} label="Güncellemeleri kendiliğinden denetle" onChange={(v) => void setAutoUpdate(v, s.autoUpdateInstall)} />
+          Kendiliğinden denetle
+        </label>
+        <label className={s.autoUpdateCheck ? "" : "off"}>
+          <Switch on={s.autoUpdateInstall} label="Yeni sürümü kendiliğinden yükle" onChange={(v) => void setAutoUpdate(s.autoUpdateCheck, v)} />
+          Yeni sürümü sormadan yükle ve yeniden başlat
+        </label>
+      </div>
+    </div>
+  );
+}
+
 /** Export / import of every setting (and the sticky notes) as one file. */
 function Backup() {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -708,7 +779,7 @@ function Backup() {
   );
 }
 
-function Behavior({ bringToMain, bringKey, indicator, hoverLift }: { bringToMain: boolean; bringKey: string; indicator: Cfg["indicator"]; hoverLift: boolean }) {
+function Behavior({ bringToMain, bringKey, indicator, hoverLift, s }: { bringToMain: boolean; bringKey: string; indicator: Cfg["indicator"]; hoverLift: boolean; s: Cfg }) {
   return (
     <>
       <h2>Davranış</h2>
@@ -746,6 +817,7 @@ function Behavior({ bringToMain, bringKey, indicator, hoverLift }: { bringToMain
           <span>Dock'taki sıraya göre uygulamayı açar: Win+1 ilk uygulama, Win+0 onuncu. Açıksa öne getirir.</span>
         </div>
       </div>
+      <Updates s={s} />
       <Backup />
       <div className="card static">
         <div className="meta">
@@ -851,7 +923,7 @@ export function Settings() {
           </button>
         </div>
       </nav>
-      <main>{tab === "widgets" ? <Catalog layout={s.layout} floating={s.floating} goDesktop={() => setTab("desktop")} scales={s.scales} brightnessLayout={s.brightnessLayout} /> : tab === "order" ? <Order layout={s.layout} floating={s.floating} layout_scales={s.scales} dividerWidth={s.dividerWidth} /> : tab === "dock" ? <DockTab s={s} /> : tab === "desktop" ? <Desktop floating={s.floating} /> : tab === "design" ? <Design theme={s.theme} startIcon={s.startIcon} look={look} setLook={setLook} s={s} /> : <Behavior bringToMain={s.bringToMain} bringKey={s.bringKey} indicator={s.indicator} hoverLift={s.hoverLift} />}</main>
+      <main>{tab === "widgets" ? <Catalog layout={s.layout} floating={s.floating} goDesktop={() => setTab("desktop")} scales={s.scales} brightnessLayout={s.brightnessLayout} /> : tab === "order" ? <Order layout={s.layout} floating={s.floating} layout_scales={s.scales} dividerWidth={s.dividerWidth} /> : tab === "dock" ? <DockTab s={s} /> : tab === "desktop" ? <Desktop floating={s.floating} /> : tab === "design" ? <Design theme={s.theme} startIcon={s.startIcon} look={look} setLook={setLook} s={s} /> : <Behavior bringToMain={s.bringToMain} bringKey={s.bringKey} indicator={s.indicator} hoverLift={s.hoverLift} s={s} />}</main>
       </div>
     </div>
   );

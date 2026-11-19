@@ -19,6 +19,7 @@ mod mixer;
 mod screentime;
 mod langpop;
 mod nocaption;
+mod update;
 mod backup;
 mod clip;
 mod mic;
@@ -70,9 +71,21 @@ pub fn launch_guardian(pid: u32) {
 fn already_running() -> bool {
     use windows::Win32::Foundation::{GetLastError, ERROR_ALREADY_EXISTS};
     use windows::Win32::System::Threading::CreateMutexW;
-    // The handle is never closed: the mutex lives exactly as long as this process.
-    let r = unsafe { CreateMutexW(None, false, windows::core::w!(r"Local\custom_taskbar_dock")) };
-    r.is_ok() && unsafe { GetLastError() } == ERROR_ALREADY_EXISTS
+    // After an update the previous process is still closing: wait for it instead of giving up.
+    let after_update = std::env::args().any(|a| a == "--after-update");
+    for _ in 0..if after_update { 40 } else { 1 } {
+        // The handle of a successful claim is never closed: the mutex lives exactly as long as this process.
+        let r = unsafe { CreateMutexW(None, false, windows::core::w!(r"Local\custom_taskbar_dock")) };
+        let Ok(h) = r else { return false };
+        if unsafe { GetLastError() } != ERROR_ALREADY_EXISTS {
+            return false;
+        }
+        unsafe {
+            let _ = windows::Win32::Foundation::CloseHandle(h); // do not keep the other process's mutex alive
+        }
+        std::thread::sleep(std::time::Duration::from_millis(250));
+    }
+    true
 }
 
 /// One line in `startup.log` next to config.json. The release exe has no console and the log plugin starts late,
@@ -145,6 +158,8 @@ pub fn run() {
             float::restore(app.handle());
             notes::restore(app.handle());
             clip::start(app.handle().clone());
+            update::cleanup();
+            update::start(app.handle().clone());
             let h = app.handle().clone();
             std::thread::spawn(move || {
                 // Off the setup thread (building windows from the main thread's own closure deadlocks).
@@ -170,7 +185,7 @@ pub fn run() {
             tray::host::open_tray_overflow,
             claude_usage::claude_refresh, screentime::screentime_get, sensors::sensors_get, sensors::battery_get, float::float_open, float::float_close, float::float_pin, topapps::top_get, brightness::brightness_get, brightness::brightness_set, topapps::open_task_manager,
             settings::get_settings, settings::set_layout, settings::set_theme,
-            settings::set_bring_to_main, settings::set_widget_scale, settings::set_indicator, settings::set_start_icon, mic::mic_get, mic::mic_toggle, mic::bin_get, mic::bin_open, mic::bin_empty, notes::notes_count, notes::note_get, notes::note_new, notes::note_set, notes::note_flags, notes::note_delete, tip::tip_show, tip::tip_ready, tip::tip_hide, settings::set_dock, settings::set_autohide, settings::set_hover_lift, settings::set_divider_width, settings::set_icons, backup::backup_export, backup::backup_import, settings::set_look, clip::clip_count, clip::clip_clear, settings::autostart_get, settings::autostart_set, shell::monitors_list, settings::set_brightness_layout,
+            settings::set_bring_to_main, settings::set_widget_scale, settings::set_indicator, settings::set_start_icon, mic::mic_get, mic::mic_toggle, mic::bin_get, mic::bin_open, mic::bin_empty, notes::notes_count, notes::note_get, notes::note_new, notes::note_set, notes::note_flags, notes::note_delete, tip::tip_show, tip::tip_ready, tip::tip_hide, settings::set_dock, settings::set_autohide, settings::set_hover_lift, settings::set_divider_width, settings::set_icons, settings::set_auto_update, update::update_state, update::update_check, update::update_install, backup::backup_export, backup::backup_import, settings::set_look, clip::clip_count, clip::clip_clear, settings::autostart_get, settings::autostart_set, shell::monitors_list, settings::set_brightness_layout,
             settings::set_bring_key, settings::restart_app, settings::quit_app, settings::open_settings,
             mixer::mixer_list, mixer::mixer_set_volume, mixer::mixer_set_mute, mixer::mixer_toggle, mixer::mixer_fit
         ])

@@ -197,6 +197,8 @@ export interface Settings {
   dockBorder: number;
   dockText: string;
   dockAccent: string;
+  autoUpdateCheck: boolean;
+  autoUpdateInstall: boolean;
 }
 export const setLook = (radius: number, border: number, text: string, accent: string) => invoke<void>("set_look", { radius, border, text, accent });
 export const setIcons = (size: number, gap: number) => invoke<void>("set_icons", { size, gap });
@@ -270,6 +272,11 @@ export const noteFlags = (id: string, locked: boolean, top: boolean) => invoke<v
 export const noteDelete = (id: string) => invoke<void>("note_delete", { id });
 export const backupExport = () => invoke<string>("backup_export");
 export const backupImport = () => invoke<string>("backup_import");
+export type UpdateInfo = { current: string; latest: string; available: boolean; notes: string; size: number; checked: boolean; error: string; canInstall: boolean };
+export const updateState = () => invoke<UpdateInfo>("update_state");
+export const updateCheck = () => invoke<UpdateInfo>("update_check");
+export const updateInstall = () => invoke<void>("update_install");
+export const setAutoUpdate = (check: boolean, install: boolean) => invoke<void>("set_auto_update", { check, install });
 export const langSelect = (hkl: string) => invoke<void>("lang_select", { hkl });
 export const langToggle = (iconCx: number, rows: number, wasOpen: boolean) => invoke<void>("lang_pop_toggle", { iconCx, rows, wasOpen });
 export const langGet = () => sample(() => invoke<Lang>("lang_get"), { code: "TR", name: "Türkçe" });

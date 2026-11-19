@@ -166,3 +166,10 @@ html:has(.st-shell), html:has(.st-shell) body, html:has(.st-shell) #root { backg
 .st .bk.ok { color: #3fd07a; }
 .st .bk.err { color: #ff7b6b; }
 .st .keybtn:disabled { opacity: 0.5; cursor: default; }
+
+.st .upnotes { white-space: pre-line; margin-top: 4px; font-size: 12px; color: var(--dim); }
+.st .upbar { display: block; margin-top: 8px; height: 6px; border-radius: 4px; background: var(--panel2); overflow: hidden; }
+.st .upbar i { display: block; height: 100%; border-radius: 4px; background: linear-gradient(90deg, #ff7a1a, #0fb5ac); transition: width 160ms; }
+.st .upopts { flex-basis: 100%; display: flex; flex-direction: column; gap: 8px; margin-top: 6px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.st .upopts label { display: flex; align-items: center; gap: 10px; color: var(--dim); font-size: 12.5px; }
+.st .upopts label.off { opacity: 0.45; pointer-events: none; }
