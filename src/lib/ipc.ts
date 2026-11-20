@@ -298,6 +298,7 @@ export const sensorsGet = () =>
     hwinfo: true,
   });
 export const batteryGet = () => sample(() => invoke<Battery | null>("battery_get"), { percent: 76, charging: true, plugged: true } as Battery | null);
+export const batteryRefresh = () => invoke<void>("battery_refresh");
 export type TopRow = { name: string; icon: string; value: number };
 export type Top = { cpu: TopRow[]; ram: TopRow[] };
 export const topGet = () =>

@@ -90,6 +90,11 @@ html, body, #root {
 
 /* Batteries: one inline row, icon + percent (+ bolt while charging). */
 .batteries { display: flex; flex-direction: row; align-items: center; gap: 12px; }
+.batteries { position: relative; cursor: pointer; }
+.batteries .bat { transition: opacity .15s; }
+.bat-label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; opacity: 0; pointer-events: none; transition: opacity .15s; }
+.batteries:hover .bat-label, .batteries.busy .bat-label { opacity: 1; }
+.batteries:hover .bat, .batteries.busy .bat { opacity: 0 !important; }
 .bat { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; }
 .sys-btn { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; }
 .sys-btn .dim { font-size: 12px; }

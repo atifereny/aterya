@@ -120,51 +120,70 @@ fn read_hidpp(pid: u16, idx: u8) -> Option<BatteryReading> {
         .flatten()
 }
 
-/// One reading per device. A device that answers nothing but has answered before is reported
+/// One reading for device `i`. A device that answers nothing but has answered before is reported
 /// `asleep` with its last value (keyboards doze off; the dongle stays silent until a key press).
-fn snapshot(last: &mut [Option<BatteryReading>; 3], due: [bool; 3]) -> Vec<DeviceBattery> {
-    DEVICES
-        .iter()
-        .enumerate()
-        .map(|(i, &(id, name, reader))| {
-            if due[i] {
-                let r = reader();
-                if r.is_some() || id != "keyboard" {
-                    last[i] = r;
-                }
-                if r.is_none() {
-                    return DeviceBattery { id, name, percent: last[i].map(|l| l.percent), charging: false, connected: last[i].is_some(), asleep: last[i].is_some() };
-                }
-            }
-            let r = last[i];
-            DeviceBattery { id, name, percent: r.map(|r| r.percent), charging: r.is_some_and(|r| r.charging), connected: r.is_some(), asleep: false }
-        })
-        .collect()
+fn read_one(i: usize, last: &mut Option<BatteryReading>) -> DeviceBattery {
+    let (id, name, reader) = DEVICES[i];
+    let r = reader();
+    if r.is_some() || id != "keyboard" {
+        *last = r;
+    }
+    if r.is_none() {
+        return DeviceBattery { id, name, percent: last.map(|l| l.percent), charging: false, connected: last.is_some(), asleep: last.is_some() };
+    }
+    DeviceBattery { id, name, percent: r.map(|r| r.percent), charging: r.is_some_and(|r| r.charging), connected: r.is_some(), asleep: false }
 }
 
-/// Mouse and headset are read every `poll_minutes`; the keyboard every KEYBOARD_POLL, so its wake-up
-/// shows quickly (and the poll itself may keep the dongle link busy). Emits only on change.
+struct Shared {
+    app: AppHandle,
+    shown: std::sync::Mutex<Vec<DeviceBattery>>,
+    last: std::sync::Mutex<[Option<BatteryReading>; 3]>,
+}
+static SHARED: std::sync::OnceLock<Shared> = std::sync::OnceLock::new();
+
+/// Reads device `i` now and emits the list if it changed.
+fn update(sh: &Shared, i: usize) {
+    let mut last = sh.last.lock().unwrap()[i];
+    let d = read_one(i, &mut last);
+    sh.last.lock().unwrap()[i] = last;
+    let mut st = sh.shown.lock().unwrap();
+    if st[i] != d {
+        st[i] = d;
+        sh.app.state::<Hub>().emit("battery://changed", st.clone());
+    }
+}
+
+/// One thread per device, so a sleeping device never delays the others, and each result is shown
+/// the moment it arrives. Mouse and headset are read every `poll_minutes`; the keyboard every 30 s so
+/// its wake-up shows quickly. Emits only on change.
 pub fn start(app: AppHandle, poll_minutes: u64) {
-    const KEYBOARD_POLL: Duration = Duration::from_secs(15);
-    std::thread::spawn(move || {
-        let mut last = [None; 3];
-        let mut prev: Option<Vec<DeviceBattery>> = None;
-        let mut slow_at = Instant::now();
-        let mut first = true;
-        loop {
-            let slow = first || slow_at.elapsed() >= Duration::from_secs(poll_minutes.max(1) * 60);
-            if slow {
-                slow_at = Instant::now();
+    const KEYBOARD_POLL: Duration = Duration::from_secs(30);
+    let slow = Duration::from_secs(poll_minutes.max(1) * 60);
+    let shown = DEVICES.iter().map(|&(id, name, _)| DeviceBattery { id, name, percent: None, charging: false, connected: false, asleep: false }).collect::<Vec<_>>();
+    app.state::<Hub>().emit("battery://changed", shown.clone());
+    let sh = SHARED.get_or_init(|| Shared { app, shown: shown.into(), last: [None; 3].into() });
+    for i in 0..DEVICES.len() {
+        let every = if DEVICES[i].0 == "keyboard" { KEYBOARD_POLL } else { slow };
+        std::thread::spawn(move || loop {
+            update(sh, i);
+            std::thread::sleep(every);
+        });
+    }
+}
+
+/// Reads every device right now (in parallel); returns when all have answered or timed out.
+#[tauri::command]
+pub async fn battery_refresh() -> Result<(), String> {
+    let Some(sh) = SHARED.get() else { return Ok(()) };
+    tauri::async_runtime::spawn_blocking(move || {
+        std::thread::scope(|s| {
+            for i in 0..DEVICES.len() {
+                s.spawn(move || update(sh, i));
             }
-            first = false;
-            let now = snapshot(&mut last, [slow, slow, true]);
-            if prev.as_ref() != Some(&now) {
-                app.state::<Hub>().emit("battery://changed", now.clone());
-                prev = Some(now);
-            }
-            std::thread::sleep(KEYBOARD_POLL);
-        }
-    });
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -200,7 +219,8 @@ mod tests {
     #[test]
     #[ignore]
     fn probe() {
-        for d in super::snapshot(&mut [None; 3], [true; 3]) {
+        for i in 0..super::DEVICES.len() {
+            let d = super::read_one(i, &mut None);
             println!("{d:?}");
         }
     }

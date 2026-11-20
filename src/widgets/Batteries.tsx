@@ -1,4 +1,5 @@
-import { EVENTS, useEvent, type DeviceBattery } from "../lib/ipc";
+import { useState } from "react";
+import { batteryRefresh, EVENTS, useEvent, type DeviceBattery } from "../lib/ipc";
 
 const color = (p: number) => (p > 50 ? "#4ade80" : p >= 20 ? "#fbbf24" : "#f87171");
 const base = { width: 15, height: 15, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" } as const;
@@ -27,8 +28,15 @@ const GLYPH = {
 
 export function Batteries() {
   const devices = useEvent<DeviceBattery[]>(EVENTS.battery, []);
+  const [busy, setBusy] = useState(false);
+  const refresh = () => {
+    if (busy) return;
+    setBusy(true);
+    batteryRefresh().catch(() => {}).finally(() => setBusy(false));
+  };
   return (
-    <div className="tile batteries">
+    <div className={busy ? "tile batteries busy" : "tile batteries"} onClick={refresh} role="button" title="Tıkla: yenile">
+      <span className="bat-label">{busy ? "Yenileniyor…" : "Yenile"}</span>
       {devices.map((d) => {
         const on = d.connected && d.percent !== null;
         return (
