@@ -292,6 +292,7 @@ fn ensure(app: &AppHandle) -> Result<WebviewWindow, String> {
     }
     let w = WebviewWindowBuilder::new(app, "langpop", WebviewUrl::App("index.html#lang".into()))
         .title("")
+        .additional_browser_args(crate::BROWSER_ARGS)
         .transparent(true)
         .decorations(false)
         .always_on_top(true)

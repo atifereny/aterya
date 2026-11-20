@@ -83,12 +83,13 @@ export function Mixer() {
       }
     };
     void tick();
-    const t = setInterval(() => void tick(), 1000);
+    // Hidden most of the time: a slow refresh keeps the row count (window size) close, full speed while open.
+    const t = setInterval(() => void tick(), openEvt ? 1000 : 5000);
     return () => {
       live = false;
       clearInterval(t);
     };
-  }, []);
+  }, [openEvt]);
   const patch = (id: string, p: Partial<MixerApp>) => setApps((a) => a.map((x) => (x.id === id ? { ...x, ...p } : x)));
   return (
     <div className={open || (fallback && !seenEvent.current) ? "mx in" : "mx"}>

@@ -16,8 +16,8 @@ const Pin = ({ on }: { on: boolean }) => (
 );
 
 const Grip = () => (
-  <svg width="22" height="10" viewBox="0 0 22 10" fill="currentColor" aria-hidden data-tauri-drag-region>
-    {[3, 8, 13, 18].flatMap((x) => [2, 7].map((y) => <circle key={`${x}-${y}`} cx={x} cy={y} r="1.15" data-tauri-drag-region />))}
+  <svg width="22" height="10" viewBox="0 0 22 10" fill="currentColor" aria-hidden>
+    {[3, 8, 13, 18].flatMap((x) => [2, 7].map((y) => <circle key={`${x}-${y}`} cx={x} cy={y} r="1.15" />))}
   </svg>
 );
 
@@ -52,8 +52,8 @@ export function Float() {
   return (
     <div className="fl-wrap">
       <div className="fl" ref={pill}>
-        <div className="fl-bar" data-tauri-drag-region={pinned ? undefined : ""} title={pinned ? "Sabitlendi" : "Sürükleyerek taşı"}>
-          {!pinned && <span className="fl-grip" data-tauri-drag-region><Grip /></span>}
+        <div className="fl-bar" data-tauri-drag-region={pinned ? undefined : "deep"} title={pinned ? "Sabitlendi" : "Sürükleyerek taşı"}>
+          {!pinned && <span className="fl-grip"><Grip /></span>}
           <button className={pinned ? "fl-pin on" : "fl-pin"} onClick={() => void floatPin(id, !pinned)} aria-label={pinned ? "Sabitlemeyi kaldır" : "Sabitle"} title={pinned ? "Sabitlemeyi kaldır" : "Buraya sabitle"}>
             <Pin on={pinned} />
             {pinned && <span>Sabit</span>}

@@ -62,6 +62,7 @@ async fn build(app: &AppHandle, n: &Note) -> Result<WebviewWindow, String> {
     }
     let w = WebviewWindowBuilder::new(app, label(&n.id), WebviewUrl::App(format!("index.html#note={}", n.id).into()))
         .title("Not")
+        .additional_browser_args(crate::BROWSER_ARGS)
         .decorations(false)
         .transparent(true)
         .shadow(false)

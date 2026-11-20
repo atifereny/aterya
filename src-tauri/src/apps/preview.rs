@@ -166,6 +166,7 @@ fn ensure(app: &AppHandle) -> Result<WebviewWindow, String> {
     }
     let w = WebviewWindowBuilder::new(app, "preview", WebviewUrl::App("index.html#preview".into()))
         .title("")
+        .additional_browser_args(crate::BROWSER_ARGS)
         .transparent(true)
         .decorations(false)
         .always_on_top(true)

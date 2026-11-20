@@ -8,7 +8,7 @@ use windows::Win32::{
         SetMonitorBrightness, PHYSICAL_MONITOR,
     },
     Foundation::{LPARAM, RECT},
-    Graphics::Gdi::{EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITORINFO},
+    Graphics::Gdi::{EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITORINFO, MONITORINFOEXW},
 };
 use windows_core::BOOL;
 
@@ -36,10 +36,15 @@ fn with_all<R>(f: impl FnOnce(&[PHYSICAL_MONITOR]) -> R) -> R {
     let mut all: Vec<PHYSICAL_MONITOR> = vec![];
     unsafe {
         let _ = EnumDisplayMonitors(None, None, Some(collect), LPARAM(&mut hs as *mut _ as isize));
+        // Screen numbers as the user set them in Aterya (default: left to right).
+        let order = crate::shell::numbered();
         let pos = |h: &HMONITOR| {
-            let mut mi = MONITORINFO { cbSize: size_of::<MONITORINFO>() as u32, ..Default::default() };
-            let _ = GetMonitorInfoW(*h, &mut mi);
-            (mi.rcMonitor.left, mi.rcMonitor.top)
+            let mut mi = MONITORINFOEXW::default();
+            mi.monitorInfo.cbSize = size_of::<MONITORINFOEXW>() as u32;
+            let _ = GetMonitorInfoW(*h, &mut mi as *mut _ as *mut MONITORINFO);
+            let n = mi.szDevice.iter().position(|&c| c == 0).unwrap_or(mi.szDevice.len());
+            let dev = String::from_utf16_lossy(&mi.szDevice[..n]);
+            (order.iter().position(|d| *d == dev).unwrap_or(usize::MAX), mi.monitorInfo.rcMonitor.left, mi.monitorInfo.rcMonitor.top)
         };
         hs.sort_by_key(pos);
         for h in hs {

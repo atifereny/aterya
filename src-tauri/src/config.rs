@@ -136,6 +136,8 @@ pub struct Config {
     pub start_icon: String,
     /// Device name of the screen the dock sits on (e.g. `\.\DISPLAY2`); empty means the primary screen.
     pub dock_monitor: String,
+    /// Screen numbering chosen by the user: device names, first = screen 1. Screens not listed follow, left to right.
+    pub monitor_order: Vec<String>,
     /// Dock size factor (0.7..=1.5); 0 (missing) means 1.
     pub dock_scale: f64,
     /// Gap between the dock and the screen edge in CSS px (0..=24); missing means 4.

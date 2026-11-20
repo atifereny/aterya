@@ -16,6 +16,7 @@ fn ensure(app: &AppHandle) -> Result<WebviewWindow, String> {
     }
     let w = WebviewWindowBuilder::new(app, "tip", WebviewUrl::App("index.html#tip".into()))
         .title("")
+        .additional_browser_args(crate::BROWSER_ARGS)
         .transparent(true)
         .decorations(false)
         .always_on_top(true)

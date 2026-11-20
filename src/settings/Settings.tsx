@@ -2,7 +2,7 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { StartIcon, START_ICONS } from "../lib/StartIcon";
-import { autostartGet, autostartSet, backupExport, backupImport, setAutoUpdate, updateCheck, updateInstall, updateState, type UpdateInfo, setAutohide, setHoverLift, setDividerWidth, setIcons, setLook, demo, monitorsList, setDock, type MonitorInfo, requestState, setIndicator, setStartIcon, floatClose, floatOpen, floatPin, quitApp, setBrightnessLayout, setWidgetScale, restartApp, setBringKey, setBringToMain, setLayout, setTheme, useSettings, type FloatCfg, type LayoutCfg, type Settings as Cfg, type ThemeCfg, type WidgetId } from "../lib/ipc";
+import { autostartGet, autostartSet, backupExport, backupImport, setAutoUpdate, updateCheck, updateInstall, updateState, type UpdateInfo, setAutohide, setHoverLift, setDividerWidth, setIcons, setLook, demo, monitorsList, setMonitorOrder, setDock, type MonitorInfo, requestState, setIndicator, setStartIcon, floatClose, floatOpen, floatPin, quitApp, setBrightnessLayout, setWidgetScale, restartApp, setBringKey, setBringToMain, setLayout, setTheme, useSettings, type FloatCfg, type LayoutCfg, type Settings as Cfg, type ThemeCfg, type WidgetId } from "../lib/ipc";
 import { WIDGET_INFO } from "../lib/widgets";
 import { Zoom } from "../lib/Zoom";
 import "./settings.css";
@@ -199,6 +199,7 @@ function Order({ layout, floating, layout_scales, dividerWidth }: { layout: Layo
               data-wid={id}
               className={`tilecard${drag === id ? " dragging" : ""}`}
               onPointerDown={(e) => {
+                e.preventDefault(); // no text selection / native drag starting on the dots, which would cancel the pointer
                 e.currentTarget.parentElement!.setPointerCapture(e.pointerId);
                 setDrag(id);
               }}
@@ -433,9 +434,9 @@ function DockTab({ s }: { s: Cfg }) {
       </div>
       <h3 className="sub-h">Ekran</h3>
       <div className="monpick">
-        {mons.map((m, i) => (
+        {mons.map((m) => (
+          <div className="monwrap" key={m.device}>
           <button
-            key={m.device}
             className={chosen === m.device ? "mon sel" : "mon"}
             onClick={() => {
               latest.current = { ...latest.current, monitor: m.primary ? "" : m.device };
@@ -443,13 +444,33 @@ function DockTab({ s }: { s: Cfg }) {
             }}
           >
             <span className="mon-box" style={{ width: Math.round(m.width * Math.min(100 / m.width, 64 / m.height)), height: Math.round(m.height * Math.min(100 / m.width, 64 / m.height)) }}>
-              {i + 1}
+              {m.num}
             </span>
-            <b>{m.primary ? "Ana ekran" : `Ekran ${i + 1}`}</b>
+            <b>{m.primary ? "Ana ekran" : `Ekran ${m.num}`}</b>
             <span>
               {m.width} × {m.height}
             </span>
           </button>
+          {mons.length > 1 && (
+            <div className="monnums" role="group" aria-label="Ekran numarası">
+              {mons.map((_, k) => (
+                <button
+                  key={k}
+                  className={m.num === k + 1 ? "on" : ""}
+                  onClick={() => {
+                    // The screen holding that number takes this one's old number.
+                    const order = [...mons].sort((a, b) => a.num - b.num).map((x) => x.device);
+                    const from = m.num - 1;
+                    [order[from], order[k]] = [order[k], order[from]];
+                    void setMonitorOrder(order).then(() => monitorsList().then(setMons));
+                  }}
+                >
+                  {k + 1}
+                </button>
+              ))}
+            </div>
+          )}
+          </div>
         ))}
       </div>
       <h3 className="sub-h">Boyut</h3>

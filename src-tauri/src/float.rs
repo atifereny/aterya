@@ -16,6 +16,7 @@ async fn build(app: &AppHandle, id: &str, at: Option<(i32, i32)>) -> Result<(), 
     }
     let w = WebviewWindowBuilder::new(app, label(id), WebviewUrl::App(format!("index.html#float={id}").into()))
         .title("Aterya widget")
+        .additional_browser_args(crate::BROWSER_ARGS)
         .inner_size(280.0, 110.0)
         .decorations(false)
         .transparent(true)

@@ -110,6 +110,9 @@ fn reposition_flyout(app: &AppHandle, x: i32, y: i32) {
         let mut r = RECT::default();
         if unsafe { GetWindowRect(h, &mut r) }.is_err() { return; }
         let (w, ht) = (r.right - r.left, r.bottom - r.top);
+        // The page's y is unreliable (window.screenY); the dock window's own top is exact.
+        let mut dr = RECT::default();
+        let y = if unsafe { GetWindowRect(crate::shell::dock_hwnd(), &mut dr) }.is_ok() { dr.top } else { y };
         let _ = unsafe { SetWindowPos(h, None, x - w / 2, y - ht - 12, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE) };
         watch_flyout(app.clone());
         return;

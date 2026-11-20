@@ -240,6 +240,7 @@ pub async fn open_settings(app: AppHandle) -> Result<(), String> {
     }
     WebviewWindowBuilder::new(&app, "settings", WebviewUrl::App("index.html#settings".into()))
         .title("Aterya")
+        .additional_browser_args(crate::BROWSER_ARGS)
         .decorations(false)
         .background_color(tauri::window::Color(11, 11, 13, 255)) // no white flash while the page loads
         .inner_size(1120.0, 800.0)

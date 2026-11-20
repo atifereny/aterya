@@ -81,6 +81,8 @@ pub struct MonitorInfo {
     pub width: i32,
     pub height: i32,
     pub primary: bool,
+    /// Screen number (1-based): the user's order, see `Config::monitor_order`.
+    pub num: u32,
 }
 
 unsafe extern "system" fn collect(h: HMONITOR, _: HDC, _: *mut RECT, out: LPARAM) -> BOOL {
@@ -90,7 +92,7 @@ unsafe extern "system" fn collect(h: HMONITOR, _: HDC, _: *mut RECT, out: LPARAM
     if unsafe { GetMonitorInfoW(h, &mut mi as *mut _ as *mut MONITORINFO) }.as_bool() {
         let r = mi.monitorInfo.rcMonitor;
         let n = mi.szDevice.iter().position(|&c| c == 0).unwrap_or(mi.szDevice.len());
-        v.push(MonitorInfo { device: String::from_utf16_lossy(&mi.szDevice[..n]), x: r.left, y: r.top, width: r.right - r.left, height: r.bottom - r.top, primary: mi.monitorInfo.dwFlags & 1 != 0 });
+        v.push(MonitorInfo { device: String::from_utf16_lossy(&mi.szDevice[..n]), x: r.left, y: r.top, width: r.right - r.left, height: r.bottom - r.top, primary: mi.monitorInfo.dwFlags & 1 != 0, num: 0 });
     }
     BOOL(1)
 }
@@ -105,9 +107,36 @@ pub(crate) fn monitors() -> Vec<MonitorInfo> {
     v
 }
 
+/// Device names in screen-number order: the user's list (connected screens only), then the rest left to right.
+pub(crate) fn numbered() -> Vec<String> {
+    let cfg = crate::config::Config::load(&crate::config::config_path());
+    let all = monitors();
+    let mut out: Vec<String> = Vec::new();
+    for d in cfg.monitor_order.iter().chain(all.iter().map(|m| &m.device)) {
+        if all.iter().any(|m| &m.device == d) && !out.contains(d) {
+            out.push(d.clone());
+        }
+    }
+    out
+}
+
+/// Connected screens left to right, each with its screen number.
 #[tauri::command]
 pub fn monitors_list() -> Vec<MonitorInfo> {
-    monitors()
+    let order = numbered();
+    let mut v = monitors();
+    for m in &mut v {
+        m.num = order.iter().position(|d| *d == m.device).map_or(0, |i| i as u32 + 1);
+    }
+    v
+}
+
+/// Saves the screen numbering: `order` lists the devices, first is screen 1.
+#[tauri::command]
+pub fn set_monitor_order(app: tauri::AppHandle, order: Vec<String>) -> Result<(), String> {
+    let mut c = crate::settings::current()?;
+    c.monitor_order = order;
+    crate::settings::save_and_emit(&app, &c)
 }
 
 /// The screen the dock sits on: the chosen one if it is connected, else the primary screen.

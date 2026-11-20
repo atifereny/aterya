@@ -13,15 +13,38 @@ export function Brightness() {
   const layout = useSettings()?.brightnessLayout ?? "row";
   const [ds, setDs] = useState<Display[] | null>(null);
   const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
+  const busy = useRef(false); // a read is running, or the user is dragging: do not overwrite their value
   useEffect(() => {
-    void brightnessGet().then(setDs);
-    const t = timers.current;
-    return () => t.forEach(clearTimeout);
+    // Brightness also changes elsewhere (keys, Windows, monitor buttons): re-read now and then and on hover.
+    const load = () => {
+      if (busy.current || timers.current.size) return;
+      busy.current = true;
+      void brightnessGet()
+        .then((n) => {
+          if (timers.current.size) return;
+          setDs((o) => (o && o.length === n.length && o.every((d, i) => d.index === n[i].index && d.percent === n[i].percent) ? o : n));
+        })
+        .finally(() => (busy.current = false));
+    };
+    load();
+    const t = setInterval(load, 4000);
+    window.addEventListener("focus", load);
+    const tm = timers.current;
+    return () => {
+      clearInterval(t);
+      window.removeEventListener("focus", load);
+      tm.forEach(clearTimeout);
+    };
   }, []);
   const change = (index: number, v: number) => {
     setDs((cur) => cur && cur.map((d) => (d.index === index ? { ...d, percent: v } : d)));
     clearTimeout(timers.current.get(index));
-    timers.current.set(index, setTimeout(() => void brightnessSet(index, v), 150));
+    timers.current.set(
+      index,
+      setTimeout(() => {
+        void brightnessSet(index, v).finally(() => timers.current.delete(index));
+      }, 150),
+    );
   };
   return (
     <div className={`tile brightness no-grow br-${layout}`} title="Her ekranın parlaklığı (soldan sağa)">

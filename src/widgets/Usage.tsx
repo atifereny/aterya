@@ -93,7 +93,8 @@ export function KeyboardLang() {
   const popOpen = useEvent<boolean>(EVENTS.langOpen, false);
   const openAtDown = useRef(false);
   useEffect(() => {
-    const load = () => void langGet().then(setL);
+    // Polled often to follow Alt+Shift; only a change re-renders.
+    const load = () => void langGet().then((n) => setL((o) => (o && n && o.code === n.code && o.name === n.name ? o : n)));
     load();
     const t = setInterval(load, 300);
     return () => clearInterval(t);
