@@ -153,25 +153,25 @@ fn phys(css: f64, dpi: u32) -> f64 {
 /// stair-step this far outside the anti-aliased clip makes it invisible (only transparent pixels).
 const HIT_SLACK: i32 = 2;
 
-/// Place the blur behind the pill (a rounded rect at the top of the window) and make the same
+/// Place the blur behind the pill (a rounded rect at the window's top, or bottom for a top dock) and make the same
 /// area, plus HIT_SLACK, the window's hit region. All arguments are CSS px. Window's thread only.
-pub fn set_region(hwnd: HWND, x: f64, width: f64, height: f64, radius: f64) {
+pub fn set_region(hwnd: HWND, x: f64, y: f64, width: f64, height: f64, radius: f64) {
     let dpi = unsafe { GetDpiForWindow(hwnd) }.max(96);
     let z = super::zoom();
-    let (l, w, h, r) = (phys(x, dpi) * z, phys(width, dpi) * z, phys(height, dpi) * z, phys(radius, dpi) * z);
+    let (l, t, w, h, r) = (phys(x, dpi) * z, phys(y, dpi) * z, phys(width, dpi) * z, phys(height, dpi) * z, phys(radius, dpi) * z);
     BACKDROP.with_borrow(|b| {
         if let Some(b) = b {
             let size = Vector2 { X: w as f32, Y: h as f32 };
-            let _ = b.visual.SetOffset(Vector3 { X: l as f32, Y: 0.0, Z: 0.0 });
+            let _ = b.visual.SetOffset(Vector3 { X: l as f32, Y: t as f32, Z: 0.0 });
             let _ = b.visual.SetSize(size);
             let _ = b.shape.SetSize(size);
             let _ = b.shape.SetCornerRadius(Vector2 { X: r as f32, Y: r as f32 });
         }
     });
     let s = HIT_SLACK;
-    let (l, rgt, bot, d) = (l.floor() as i32 - s, (l + w).ceil() as i32 + s, h.ceil() as i32 + s, (2.0 * r).round() as i32 + 2 * s);
+    let (l, rgt, top, bot, d) = (l.floor() as i32 - s, (l + w).ceil() as i32 + s, t.floor() as i32 - s, (t + h).ceil() as i32 + s, (2.0 * r).round() as i32 + 2 * s);
     unsafe {
-        SetWindowRgn(hwnd, Some(CreateRoundRectRgn(l, -s, rgt + 1, bot + 1, d, d)), true); // system owns the region
+        SetWindowRgn(hwnd, Some(CreateRoundRectRgn(l, top, rgt + 1, bot + 1, d, d)), true); // system owns the region
     }
 }
 

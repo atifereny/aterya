@@ -43,7 +43,7 @@ export function Storage() {
   const s = useSensors();
   const disks = (s.disks ?? []).slice(0, 3);
   return (
-    <div className="tile usage storage no-grow" title={s.hwinfo ? "SSD sıcaklığı ve okuma/yazma hızı (MB/s)" : "Bu değerler için HWiNFO > Ayarlar > Shared Memory Support açık olmalı"}>
+    <div className="tile usage storage no-grow" title={s.hwinfo ? "SSD sıcaklığı ve okuma/yazma hızı (MB/s)" : s.hwinfo_stale ? "HWiNFO veri göndermiyor (ücretsiz sürüm 12 saatte durur): Ayarlar > Shared Memory Support'u kapatıp aç" : "Bu değerler için HWiNFO > Ayarlar > Shared Memory Support açık olmalı"}>
       {disks.map((d) => (
         <div className="u-row" key={d.name}>
           <span className="u-name">{d.name}</span>
@@ -56,7 +56,7 @@ export function Storage() {
           </span>
         </div>
       ))}
-      {!disks.length && <span className="dim">{s.hwinfo ? "Disk bulunamadı" : "HWiNFO gerekli"}</span>}
+      {!disks.length && <span className="dim">{s.hwinfo ? "Disk bulunamadı" : s.hwinfo_stale ? "HWiNFO durdu" : "HWiNFO gerekli"}</span>}
     </div>
   );
 }

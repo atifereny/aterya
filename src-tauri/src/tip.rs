@@ -72,7 +72,7 @@ pub async fn tip_ready(app: AppHandle, width: f64, height: f64) -> Result<(), St
         }
         let mon = crate::shell::primary_monitor();
         let x = (ICON_CX.load(Ordering::SeqCst) - w / 2).min(mon.right - w - 4).max(mon.left + 4);
-        let y = (dr.top - (ABOVE_DOCK_CSS as f64 * k) as i32 - h).max(mon.top);
+        let y = crate::shell::popup_y(dr, h, (ABOVE_DOCK_CSS as f64 * k) as i32, mon);
         unsafe {
             let _ = SetWindowPos(me, Some(HWND_TOPMOST), x, y, w, h, SWP_SHOWWINDOW | SWP_NOACTIVATE);
         }

@@ -78,11 +78,13 @@ pub fn start() {
                 continue;
             }
             let height = rc.bottom - rc.top;
-            let shown_y = mon.bottom - height;
+            let top = super::edge_top();
+            let shown_y = if top { mon.top } else { mon.bottom - height };
+            let hidden_y = if top { mon.top - height } else { mon.bottom };
             let mut p = POINT::default();
             let _ = unsafe { GetCursorPos(&mut p) };
             let in_x = p.x >= mon.left && p.x < mon.right;
-            let at_edge = in_x && p.y >= mon.bottom - 1;
+            let at_edge = in_x && if top { p.y <= mon.top } else { p.y >= mon.bottom - 1 };
             let other = wanted_for_other_reasons();
             if super::HIDDEN.load(Ordering::Relaxed) {
                 if at_edge || other {
@@ -92,12 +94,12 @@ pub fn start() {
                 }
                 outside_since = None;
             } else {
-                let in_band = in_x && p.y >= shown_y - BAND_SLACK;
+                let in_band = in_x && if top { p.y <= mon.top + height + BAND_SLACK } else { p.y >= shown_y - BAND_SLACK };
                 if in_band || other {
                     outside_since = None;
                 } else if outside_since.get_or_insert_with(Instant::now).elapsed() >= DWELL {
                     super::HIDDEN.store(true, Ordering::Relaxed);
-                    slide(h, rc.top, mon.bottom);
+                    slide(h, rc.top, hidden_y);
                     outside_since = None;
                     log::info!("[autohide] dock hidden");
                 }

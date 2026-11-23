@@ -2,7 +2,7 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { StartIcon, START_ICONS } from "../lib/StartIcon";
-import { autostartGet, autostartSet, backupExport, backupImport, setAutoUpdate, updateCheck, updateInstall, updateState, type UpdateInfo, setAutohide, setHoverLift, setDividerWidth, setIcons, setLook, demo, monitorsList, setMonitorOrder, setDock, type MonitorInfo, requestState, setIndicator, setStartIcon, floatClose, floatOpen, floatPin, quitApp, setBrightnessLayout, setWidgetScale, restartApp, setBringKey, setBringToMain, setLayout, setTheme, useSettings, type FloatCfg, type LayoutCfg, type Settings as Cfg, type ThemeCfg, type WidgetId } from "../lib/ipc";
+import { autostartGet, autostartSet, backupExport, backupImport, setAutoUpdate, updateCheck, updateInstall, updateState, type UpdateInfo, setAutohide, setDockEdge, setHoverLift, setDividerWidth, setIcons, setLook, demo, monitorsList, setMonitorOrder, setDock, type MonitorInfo, requestState, setIndicator, setStartIcon, floatClose, floatOpen, floatPin, quitApp, setBrightnessLayout, setWidgetScale, restartApp, setBringKey, setBringToMain, setLayout, setTheme, useSettings, type FloatCfg, type LayoutCfg, type Settings as Cfg, type ThemeCfg, type WidgetId } from "../lib/ipc";
 import { WIDGET_INFO } from "../lib/widgets";
 import { Zoom } from "../lib/Zoom";
 import "./settings.css";
@@ -431,6 +431,19 @@ function DockTab({ s }: { s: Cfg }) {
           <span>Dock ekranın altına kayıp saklanır. Fareyi ekranın alt kenarına götürünce ya da Windows tuşuna basınca geri gelir. Gizliyken pencereler tüm ekranı kullanır.</span>
         </div>
         <Switch on={s.dockAutohide} label="Otomatik gizle" onChange={(v) => void setAutohide(v)} />
+      </div>
+      <div className="card static">
+        <div className="meta">
+          <b>Konum</b>
+          <span>Dock'un ekranın hangi kenarında duracağı.</span>
+        </div>
+        <div className="keypick">
+          {(["bottom", "top"] as const).map((k) => (
+            <button key={k} className={s.dockEdge === k ? "keybtn rec" : "keybtn"} onClick={() => void setDockEdge(k)}>
+              {k === "bottom" ? "Alt" : "Üst"}
+            </button>
+          ))}
+        </div>
       </div>
       <h3 className="sub-h">Ekran</h3>
       <div className="monpick">

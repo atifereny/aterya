@@ -57,6 +57,8 @@ pub struct Sensors {
     disks: Vec<Disk>,
     /// HWiNFO shared memory found (CPU temperature/power and the SSD values need it).
     hwinfo: bool,
+    /// HWiNFO's mapping exists but nothing updates it (its free version stops after 12 hours).
+    hwinfo_stale: bool,
 }
 
 static LATEST: Mutex<Option<Sensors>> = Mutex::new(None);
@@ -170,6 +172,7 @@ struct Hw {
     cpu_temp: Option<f32>,
     cpu_power: Option<f32>,
     disks: Vec<Disk>,
+    stale: bool,
 }
 
 /// "S.M.A.R.T.: KINGSTON SNV3S1000G (50026B76872D393D) [C:, D:]" -> "KINGSTON SNV3S1000G [C:, D:]"
@@ -192,6 +195,13 @@ fn hwinfo() -> Option<Hw> {
                 return None;
             }
             let u32_at = |o: usize| (base.add(o) as *const u32).read_unaligned();
+            // Header: signature, version, revision, poll_time (time_t of the last poll). HWiNFO stamps it every
+            // poll; a signature of 0xDEADDEAD or an old stamp means it stopped feeding the mapping.
+            let polled = (base.add(12) as *const i64).read_unaligned();
+            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() as i64);
+            if u32_at(0) == 0xDEAD_DEAD || (polled > 0 && now - polled > 30) {
+                return Some(Hw { cpu_temp: None, cpu_power: None, disks: vec![], stale: true });
+            }
             let (so, ss, sn) = (u32_at(20) as usize, u32_at(24) as usize, u32_at(28) as usize);
             let (ro, rs, rn) = (u32_at(32) as usize, u32_at(36) as usize, u32_at(40) as usize);
             if ss < 264 || rs < 292 || sn > 2_000 || rn > 20_000 {
@@ -250,7 +260,7 @@ fn hwinfo() -> Option<Hw> {
                     }
                 }
             }
-            Some(Hw { cpu_temp, cpu_power, disks })
+            Some(Hw { cpu_temp, cpu_power, disks, stale: false })
         })();
         if !base.is_null() {
             let _ = UnmapViewOfFile(view);
@@ -260,13 +270,35 @@ fn hwinfo() -> Option<Hw> {
     }
 }
 
+/// HWiNFO's free version stops feeding shared memory after 12 hours. The user's elevated scheduled task
+/// `HWiNFOYenile` restarts it; running it needs no elevation. Without that task this does nothing.
+fn restart_hwinfo() {
+    use std::os::windows::process::CommandExt;
+    let r = std::process::Command::new("schtasks").args(["/run", "/tn", "HWiNFOYenile"]).creation_flags(0x0800_0000).output();
+    match r {
+        Ok(o) if o.status.success() => log::info!("[sensors] HWiNFO stopped feeding data, restart task started"),
+        _ => log::warn!("[sensors] HWiNFO stopped feeding data and the HWiNFOYenile task could not be run"),
+    }
+}
+
 pub fn start() {
     std::thread::spawn(|| {
+        let mut stale_since: Option<Instant> = None;
+        let mut restarted: Option<Instant> = None;
         let (mut cpu_load, nvml) = (CpuLoad(None), Nvml::open());
         let mut net = net_totals().map(|t| (t, Instant::now()));
         loop {
             std::thread::sleep(Duration::from_secs(2));
             let hw = hwinfo();
+            if hw.as_ref().is_some_and(|h| h.stale) {
+                let since = *stale_since.get_or_insert_with(Instant::now);
+                if since.elapsed() >= Duration::from_secs(60) && restarted.is_none_or(|t| t.elapsed() >= Duration::from_secs(600)) {
+                    restarted = Some(Instant::now());
+                    restart_hwinfo();
+                }
+            } else {
+                stale_since = None;
+            }
             let (gpu, vram) = nvml.as_ref().map(Nvml::read).unwrap_or_default();
             let (mut down, mut up) = (0.0, 0.0);
             if let Some(now) = net_totals() {
@@ -284,7 +316,8 @@ pub fn start() {
                 vram,
                 down,
                 up,
-                hwinfo: hw.is_some(),
+                hwinfo: hw.as_ref().is_some_and(|h| !h.stale),
+                hwinfo_stale: hw.as_ref().is_some_and(|h| h.stale),
                 disks: hw.map(|h| h.disks).unwrap_or_default(),
             };
             *LATEST.lock().unwrap() = Some(s);

@@ -30,7 +30,7 @@ export default function App() {
     const el = pill.current!;
     const report = () => {
       const r = el.getBoundingClientRect();
-      void setPillBounds(r.x, r.width, r.height).then(solid);
+      void setPillBounds(r.x, r.y, r.width, r.height).then(solid);
       setAvailable(Math.max(0, window.innerWidth * CAP - CHROME_PX - othersWidth(el)));
     };
     const solid = (blur: boolean) => el.classList.toggle("solid", !blur);
@@ -63,6 +63,7 @@ export default function App() {
   useEffect(() => {
     if (!settings) return;
     document.documentElement.dataset.theme = settings.theme.preset;
+    document.documentElement.dataset.edge = settings.dockEdge;
     document.documentElement.dataset.lift = settings.hoverLift ? "on" : "off";
     applyLook(settings);
     document.documentElement.style.setProperty("--div-w", `${settings.dividerWidth}px`);

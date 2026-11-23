@@ -235,7 +235,9 @@ fn show(app: &AppHandle, group: &str, icon_cx: f64) -> Result<(), String> {
     let mut dr = RECT::default();
     unsafe { GetWindowRect(dock, &mut dr) }.map_err(|e| e.to_string())?;
     let size = (px(lay.w), px(lay.h));
-    let (x, y) = place(size, dr.left + (icon_cx * crate::shell::dock_k()).round() as i32, dr.top - px(ABOVE_DOCK_CSS), crate::shell::primary_monitor());
+    let mon = crate::shell::primary_monitor();
+    let (x, _) = place(size, dr.left + (icon_cx * crate::shell::dock_k()).round() as i32, 0, mon);
+    let y = crate::shell::popup_y(dr, size.1, px(ABOVE_DOCK_CSS), mon);
 
     let items: Vec<Item> = live
         .iter()

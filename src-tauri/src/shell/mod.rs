@@ -15,7 +15,7 @@ use windows_core::BOOL;
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::Shell::{ABN_FULLSCREENAPP, ABN_POSCHANGED};
 use windows::Win32::UI::WindowsAndMessaging::{
-    RegisterWindowMessageW, SetWindowPos, ShowWindow, HWND_TOPMOST, SWP_NOACTIVATE, SW_HIDE, SW_SHOWNA,
+    RegisterWindowMessageW, SetWindowPos, ShowWindow, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, SW_HIDE, SW_SHOWNA,
     WM_DISPLAYCHANGE, WM_DPICHANGED, WM_ENDSESSION,
 };
 
@@ -55,6 +55,24 @@ fn radius_css() -> f64 {
 /// The dock page's zoom (f32 bits) and its gap to the screen edge (CSS px, f32 bits).
 static ZOOM: AtomicU32 = AtomicU32::new(0x3f80_0000); // 1.0
 static GAP: AtomicU32 = AtomicU32::new(0x4080_0000); // 4.0
+/// The dock sits on the top edge (false: the bottom one).
+static EDGE_TOP: AtomicBool = AtomicBool::new(false);
+
+pub(crate) fn edge_top() -> bool {
+    EDGE_TOP.load(Ordering::Relaxed)
+}
+
+/// The dock's strip `height` px thick along its edge of `mon`.
+pub(crate) fn edge_rect(mon: RECT, height: i32) -> RECT {
+    if edge_top() { RECT { bottom: mon.top + height, ..mon } } else { RECT { top: mon.bottom - height, ..mon } }
+}
+
+/// Top of a popup `h` px tall that opens `gap` px clear of the dock window `dock`, on the side facing the
+/// screen's middle, kept on the screen `mon`.
+pub(crate) fn popup_y(dock: RECT, h: i32, gap: i32, mon: RECT) -> i32 {
+    if edge_top() { (dock.bottom + gap).min(mon.bottom - h) } else { (dock.top - gap - h).max(mon.top) }
+}
+
 /// Device name of the chosen screen; empty means the primary one.
 static CHOSEN: Mutex<String> = Mutex::new(String::new());
 
@@ -176,13 +194,18 @@ fn place(hwnd: HWND) {
     let mon = primary_monitor();
     let auto = AUTOHIDE.load(Ordering::Relaxed);
     // Auto-hide keeps no work area: the dock floats over the windows.
-    let want = if auto { RECT { top: mon.bottom - height, ..mon } } else { appbar::query(hwnd, mon, height) };
+    let want = if auto { edge_rect(mon, height) } else { appbar::query(hwnd, mon, height) };
     let mut last = PLACED.lock().unwrap_or_else(|e| e.into_inner());
     if needs_place(*last, want, dpi) {
         let rc = if auto { want } else { appbar::set_pos(hwnd, want) };
         *last = Some((want, dpi));
         log::info!("[shell] dock placed at {},{} {}x{}", rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top);
-        let y = if auto && HIDDEN.load(Ordering::Relaxed) { mon.bottom } else { rc.top };
+        let hidden = auto && HIDDEN.load(Ordering::Relaxed);
+        let y = match (hidden, edge_top()) {
+            (false, _) => rc.top,
+            (true, false) => mon.bottom,
+            (true, true) => mon.top - (rc.bottom - rc.top),
+        };
         unsafe {
             let _ = SetWindowPos(hwnd, Some(HWND_TOPMOST), rc.left, y, rc.right - rc.left, rc.bottom - rc.top, SWP_NOACTIVATE);
         }
@@ -200,6 +223,7 @@ pub fn apply_dock(app: &tauri::AppHandle) {
     ZOOM.store(z.to_bits(), Ordering::Relaxed);
     RADIUS.store((crate::settings::dock_radius(&cfg) as f32).to_bits(), Ordering::Relaxed);
     let was_auto = AUTOHIDE.swap(cfg.dock_autohide, Ordering::Relaxed);
+    let edge_changed = EDGE_TOP.swap(cfg.dock_edge == "top", Ordering::Relaxed) != (cfg.dock_edge == "top");
     if !cfg.dock_autohide {
         HIDDEN.store(false, Ordering::Relaxed);
     }
@@ -208,8 +232,8 @@ pub fn apply_dock(app: &tauri::AppHandle) {
         let Ok(win) = main_window(&app2) else { return };
         let _ = win.set_zoom(z as f64);
         if let Ok(hwnd) = win.hwnd() {
-            if cfg.dock_autohide && !was_auto {
-                appbar::unregister(hwnd); // give the work area back
+            if (cfg.dock_autohide && !was_auto) || edge_changed {
+                appbar::unregister(hwnd); // give the work area back (a new edge registers afresh)
             }
             *PLACED.lock().unwrap_or_else(|e| e.into_inner()) = None;
             place(hwnd);
@@ -233,6 +257,7 @@ pub fn setup(app: &tauri::AppHandle) -> tauri::Result<()> {
         GAP.store((crate::settings::dock_gap(&cfg) as f32).to_bits(), Ordering::Relaxed);
         ZOOM.store((crate::settings::dock_scale(&cfg) as f32).to_bits(), Ordering::Relaxed);
         AUTOHIDE.store(cfg.dock_autohide, Ordering::Relaxed);
+        EDGE_TOP.store(cfg.dock_edge == "top", Ordering::Relaxed);
         RADIUS.store((crate::settings::dock_radius(&cfg) as f32).to_bits(), Ordering::Relaxed);
         let _ = win.set_zoom(zoom());
     }
@@ -266,7 +291,7 @@ pub(crate) fn on_message(hwnd: HWND, msg: u32, wp: WPARAM, _lp: LPARAM) {
         m if m == appbar::CALLBACK && wp.0 as u32 == ABN_POSCHANGED => place(hwnd),
         m if m == appbar::CALLBACK && wp.0 as u32 == ABN_FULLSCREENAPP => fullscreen::check(),
         WM_DPICHANGED | WM_DISPLAYCHANGE => place(hwnd),
-        WM_ENDSESSION if wp.0 != 0 => teardown(),
+        WM_ENDSESSION if wp.0 != 0 => teardown_bounded(),
         m if m != 0 && m == TASKBAR_CREATED.load(Ordering::SeqCst) => {
             log::info!("[shell] TaskbarCreated: explorer restarted, hiding again");
             taskbar::hide_all();
@@ -292,6 +317,21 @@ pub(crate) fn set_visible(visible: bool) {
     }
 }
 
+/// Put the dock back on top and re-evaluate the fullscreen state. Used after a Windows flyout closes,
+/// which can leave the dock hidden or under the shell's topmost windows.
+pub(crate) fn reassert() {
+    let h = APPBAR_HWND.load(Ordering::SeqCst);
+    if h == 0 {
+        return;
+    }
+    fullscreen::check();
+    if is_visible() {
+        unsafe {
+            let _ = SetWindowPos(HWND(h as *mut _), Some(HWND_TOPMOST), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        }
+    }
+}
+
 pub(crate) fn dock_hwnd() -> HWND {
     HWND(APPBAR_HWND.load(Ordering::SeqCst) as *mut _)
 }
@@ -304,6 +344,17 @@ pub fn teardown() {
         appbar::unregister(HWND(h as *mut _));
     }
     taskbar::restore_all();
+}
+
+/// `teardown` for the end of a Windows session. Explorer may already be gone or stuck, and the calls
+/// into it block; Windows then waits on this process and lists it (and every WebView2 child) as
+/// "preventing shutdown". Give it a second at most.
+fn teardown_bounded() {
+    let t = std::thread::spawn(teardown);
+    let end = std::time::Instant::now() + std::time::Duration::from_millis(1000);
+    while !t.is_finished() && std::time::Instant::now() < end {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
 }
 
 #[cfg(test)]
@@ -322,17 +373,17 @@ mod tests {
     }
 }
 
-/// Pill bounds in CSS px from the frontend; the pill sits at the top of the window.
+/// Pill bounds in CSS px from the frontend; the pill sits at the dock window's screen-side edge.
 /// Returns whether DWM blur is live, so the frontend can fall back to a solid pill.
 #[tauri::command]
-pub fn set_pill_bounds(window: WebviewWindow, x: f64, width: f64, height: f64) -> Result<bool, String> {
+pub fn set_pill_bounds(window: WebviewWindow, x: f64, y: f64, width: f64, height: f64) -> Result<bool, String> {
     let hwnd = window.hwnd().map_err(|e| e.to_string())?.0 as isize;
     // Composition objects belong to the main thread.
     let fill = crate::settings::current().map_or(0.3, |c| c.theme.opacity as f32);
     window
         .run_on_main_thread(move || {
             glass::set_clear(fill);
-            glass::set_region(HWND(hwnd as *mut _), x, width, height, radius_css())
+            glass::set_region(HWND(hwnd as *mut _), x, y, width, height, radius_css())
         })
         .map_err(|e| e.to_string())?;
     Ok(glass::blur_active())

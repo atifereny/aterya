@@ -90,6 +90,7 @@ fn watch_flyout(app: AppHandle) {
             std::thread::sleep(std::time::Duration::from_millis(80));
         }
         let _ = app.emit("tray://flyout", false);
+        crate::shell::reassert(); // the flyout's focus change can leave the dock hidden or buried
     });
 }
 
@@ -112,8 +113,9 @@ fn reposition_flyout(app: &AppHandle, x: i32, y: i32) {
         let (w, ht) = (r.right - r.left, r.bottom - r.top);
         // The page's y is unreliable (window.screenY); the dock window's own top is exact.
         let mut dr = RECT::default();
-        let y = if unsafe { GetWindowRect(crate::shell::dock_hwnd(), &mut dr) }.is_ok() { dr.top } else { y };
-        let _ = unsafe { SetWindowPos(h, None, x - w / 2, y - ht - 12, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE) };
+        let at = if unsafe { GetWindowRect(crate::shell::dock_hwnd(), &mut dr) }.is_ok() { dr } else { RECT { top: y, bottom: y, ..dr } };
+        let top = crate::shell::popup_y(at, ht, 12, crate::shell::primary_monitor());
+        let _ = unsafe { SetWindowPos(h, None, x - w / 2, top, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE) };
         watch_flyout(app.clone());
         return;
     }

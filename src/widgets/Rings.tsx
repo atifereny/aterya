@@ -83,7 +83,7 @@ function ChipRing({ name, chip, hint }: { name: string; chip: Chip; hint?: strin
 
 export function CpuRing() {
   const s = useSensors();
-  return <ChipRing name="CPU" chip={s.cpu} hint={s.hwinfo ? undefined : "Sıcaklık ve watt için HWiNFO > Ayarlar > Shared Memory Support açık olmalı"} />;
+  return <ChipRing name="CPU" chip={s.cpu} hint={s.hwinfo ? undefined : s.hwinfo_stale ? "HWiNFO veri göndermiyor (ücretsiz sürüm 12 saatte durur): Ayarlar > Shared Memory Support'u kapatıp aç" : "Sıcaklık ve watt için HWiNFO > Ayarlar > Shared Memory Support açık olmalı"} />;
 }
 
 export function GpuRing() {

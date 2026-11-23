@@ -412,3 +412,8 @@ html:has(.snote), html:has(.snote) body, html:has(.snote) #root { background: tr
 :root[data-acc] .app-row .app.attn::before { background: radial-gradient(circle, color-mix(in srgb, var(--dock-acc) 60%, transparent), transparent 70%); }
 :root[data-acc] .brs-fill { background: var(--dock-acc); }
 :root[data-acc] .u-temp { color: var(--dock-acc); }
+
+/* Dock on the top edge: the pill sits at the window's bottom (the gap to the screen edge is above it) and icons lift downward. */
+html[data-edge="top"] #root { position: absolute; left: 0; right: 0; bottom: 0; }
+html[data-edge="top"] .app-row .app:hover > :not(.dots) { transform: translateY(4px) scale(1.25); }
+html[data-edge="top"][data-lift="off"] .app-row .app:hover > :not(.dots) { transform: none; }

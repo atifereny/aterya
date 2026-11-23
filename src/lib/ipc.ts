@@ -120,8 +120,9 @@ export const toggleMute = () => invoke<void>("toggle_mute");
 export const openQuickSettings = () => invoke<void>("open_quick_settings");
 export const openNotifications = () => invoke<void>("open_notifications");
 /** Resolves to whether DWM blur is live behind the pill. */
-export const setPillBounds = (x: number, width: number, height: number) =>
-  invoke<boolean>("set_pill_bounds", { x, width, height });
+export const setPillBounds = (x: number, y: number, width: number, height: number) =>
+  invoke<boolean>("set_pill_bounds", { x, y, width, height });
+export const setDockEdge = (edge: "bottom" | "top") => invoke<void>("set_dock_edge", { edge });
 
 export interface PreviewItem {
   hwnd: string;
@@ -186,6 +187,7 @@ export interface Settings {
   indicator: "dot" | "bigdot" | "line";
   startIcon: StartIconKind;
   dockMonitor: string;
+  dockEdge: "bottom" | "top";
   dockScale: number;
   dockGap: number;
   dockAutohide: boolean;
@@ -246,7 +248,7 @@ export const brightnessSet = (index: number, percent: number) => invoke<void>("b
 export type Chip = { load?: number | null; temp?: number | null; power?: number | null };
 export type Mem = { used: number; total: number };
 export type Disk = { name: string; temp?: number | null; read: number; write: number };
-export type Sensors = { cpu: Chip; gpu: Chip; ram: Mem; vram?: Mem | null; down: number; up: number; disks: Disk[]; hwinfo: boolean };
+export type Sensors = { cpu: Chip; gpu: Chip; ram: Mem; vram?: Mem | null; down: number; up: number; disks: Disk[]; hwinfo: boolean; hwinfo_stale?: boolean };
 export type Lang = { code: string; name: string };
 export type Layout = { hkl: string; code: string; name: string; current: boolean };
 export const langList = () => invoke<Layout[]>("lang_list");
