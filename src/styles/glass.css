@@ -430,3 +430,21 @@ html[data-edge="right"] .app-row .app:hover > :not(.dots) { transform: translate
 html[data-edge="left"][data-lift="off"] .app-row .app:hover > :not(.dots), html[data-edge="right"][data-lift="off"] .app-row .app:hover > :not(.dots) { transform: none; }
 html[data-edge="left"] .dots, html[data-edge="right"] .dots { top: 0; bottom: 0; right: auto; left: -6px; flex-direction: column; justify-content: center; }
 html[data-edge="right"] .dots { left: auto; right: -6px; }
+
+/* Compact column widgets for the side docks. */
+.tile.side { flex-direction: column; align-items: center; justify-content: center; gap: 0; padding: 6px 4px; min-width: 46px; box-sizing: border-box; text-align: center; line-height: 1.15; }
+.tile.side .big { font-size: 17px; line-height: 1.05; }
+.tile.side b { font-size: 13px; font-variant-numeric: tabular-nums; }
+.tile.side .dim { font-size: 10px; }
+.tile.side .side-icon { font-size: 18px; line-height: 1.1; }
+.tile.side.np { cursor: pointer; gap: 2px; }
+.tile.side.np .art { width: 34px; height: 34px; }
+.tile.side .np-state { font-size: 10px; opacity: 0.8; }
+:is(html[data-edge="left"], html[data-edge="right"]) .tile.system { flex-direction: column; padding: 5px 4px; gap: 4px; }
+:is(html[data-edge="left"], html[data-edge="right"]) .system .sys-btn { flex-direction: column; gap: 1px; padding: 6px 7px; }
+:is(html[data-edge="left"], html[data-edge="right"]) .net-label { display: none; }
+:is(html[data-edge="left"], html[data-edge="right"]) .batteries { flex-direction: column; gap: 6px; padding: 6px 4px; }
+:is(html[data-edge="left"], html[data-edge="right"]) .bat { flex-direction: column; gap: 1px; font-size: 11px; }
+:is(html[data-edge="left"], html[data-edge="right"]) .tile.ringtile { flex-direction: column; padding: 6px 4px; gap: 2px; }
+:is(html[data-edge="left"], html[data-edge="right"]) .chip-col { align-items: center; min-width: 0; }
+:is(html[data-edge="left"], html[data-edge="right"]) .chip-w { display: none; }

@@ -10,8 +10,9 @@ import { isVertical } from "./lib/axis";
 const CAP = 0.9; // pill never wider than 90% of the window
 const CHROME_PX = 12 * 2 + 2; // pill padding + border
 const GAP_PX = 8;
-/** Widgets a side dock shows: the ones that fit a narrow column. */
-const SIDE_WIDGETS: string[] = ["apps", "tray", "notifications", "showdesktop", "keyboardlang", "microphone", "recyclebin", "stickynotes", "clipboard"];
+/** Widgets a side dock shows without a compact version of their own: they already fit a narrow column (CSS stacks them). */
+const SIDE_PLAIN: string[] = ["apps", "tray", "system", "notifications", "showdesktop", "keyboardlang", "microphone", "recyclebin", "stickynotes", "clipboard", "batteries", "batteryring", "cpuring", "gpuring"];
+const sideOk = (id: string) => SIDE_PLAIN.includes(id) || !!WIDGET_INFO[id as keyof typeof WIDGET_INFO]?.side;
 
 /** Length (along the dock) the pill's other children take (margins and gaps included), apps excluded. */
 function othersExtent(pill: HTMLElement): number {
@@ -32,7 +33,7 @@ export default function App() {
   const [availablePx, setAvailable] = useState(600);
   const settings = useSettings();
   const side = settings?.dockEdge === "left" || settings?.dockEdge === "right";
-  const shown = (settings?.layout.order ?? []).filter((id) => !settings!.layout.hidden.includes(id) && !settings!.floating.some((f) => f.id === id) && (!side || SIDE_WIDGETS.includes(id)));
+  const shown = (settings?.layout.order ?? []).filter((id) => !settings!.layout.hidden.includes(id) && !settings!.floating.some((f) => f.id === id) && (!side || sideOk(id)));
   useEffect(() => {
     const el = pill.current!;
     const report = () => {
@@ -82,7 +83,7 @@ export default function App() {
         {shown.map((id, i) => (
           <Fragment key={id}>
             {i > 0 && settings?.layout.dividers?.includes(shown[i - 1]) && <div className="sep" />}
-            {id === "apps" ? <AppRow availablePx={availablePx} /> : <Zoom scale={settings?.scales[id]}>{WIDGET_INFO[id].render()}</Zoom>}
+            {id === "apps" ? <AppRow availablePx={availablePx} /> : <Zoom scale={settings?.scales[id]}>{side && WIDGET_INFO[id].side ? WIDGET_INFO[id].side!() : WIDGET_INFO[id].render()}</Zoom>}
           </Fragment>
         ))}
       </div>
