@@ -5,18 +5,24 @@ import { WIDGET_INFO } from "./lib/widgets";
 import { AppRow } from "./apps/AppRow";
 import { Zoom } from "./lib/Zoom";
 import { applyLook } from "./lib/look";
+import { isVertical } from "./lib/axis";
 
 const CAP = 0.9; // pill never wider than 90% of the window
 const CHROME_PX = 12 * 2 + 2; // pill padding + border
 const GAP_PX = 8;
-/** Width the pill's other children take (margins and gaps included), apps excluded. */
-function othersWidth(pill: HTMLElement): number {
+/** Widgets a side dock shows: the ones that fit a narrow column. */
+const SIDE_WIDGETS: string[] = ["apps", "tray", "notifications", "showdesktop", "keyboardlang", "microphone", "recyclebin", "stickynotes", "clipboard"];
+
+/** Length (along the dock) the pill's other children take (margins and gaps included), apps excluded. */
+function othersExtent(pill: HTMLElement): number {
+  const vert = isVertical();
   const kids = [...pill.children] as HTMLElement[];
   let w = 0;
   for (const k of kids) {
     if (k.hasAttribute("data-apps")) continue;
     const cs = getComputedStyle(k);
-    w += k.getBoundingClientRect().width + parseFloat(cs.marginLeft) + parseFloat(cs.marginRight);
+    const r = k.getBoundingClientRect();
+    w += vert ? r.height + parseFloat(cs.marginTop) + parseFloat(cs.marginBottom) : r.width + parseFloat(cs.marginLeft) + parseFloat(cs.marginRight);
   }
   return w + GAP_PX * Math.max(0, kids.length - 1);
 }
@@ -25,13 +31,14 @@ export default function App() {
   const pill = useRef<HTMLDivElement>(null);
   const [availablePx, setAvailable] = useState(600);
   const settings = useSettings();
-  const shown = (settings?.layout.order ?? []).filter((id) => !settings!.layout.hidden.includes(id) && !settings!.floating.some((f) => f.id === id));
+  const side = settings?.dockEdge === "left" || settings?.dockEdge === "right";
+  const shown = (settings?.layout.order ?? []).filter((id) => !settings!.layout.hidden.includes(id) && !settings!.floating.some((f) => f.id === id) && (!side || SIDE_WIDGETS.includes(id)));
   useEffect(() => {
     const el = pill.current!;
     const report = () => {
       const r = el.getBoundingClientRect();
       void setPillBounds(r.x, r.y, r.width, r.height).then(solid);
-      setAvailable(Math.max(0, window.innerWidth * CAP - CHROME_PX - othersWidth(el)));
+      setAvailable(Math.max(0, (isVertical() ? window.innerHeight : window.innerWidth) * CAP - CHROME_PX - othersExtent(el)));
     };
     const solid = (blur: boolean) => el.classList.toggle("solid", !blur);
     const unlisten = listen<boolean>(EVENTS.glass, (e) => solid(e.payload)); // transparency toggled live

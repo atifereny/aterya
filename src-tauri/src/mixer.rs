@@ -208,8 +208,7 @@ fn place(app: &AppHandle, rows: usize, activate: bool) -> Result<(), String> {
     let mut dr = RECT::default();
     unsafe { GetWindowRect(dock, &mut dr) }.map_err(|e| e.to_string())?;
     let mon = crate::shell::primary_monitor();
-    let x = (ICON_CX.load(Ordering::SeqCst) - w / 2).min(mon.right - w - px(8)).max(mon.left + px(8));
-    let y = crate::shell::popup_y(dr, h, px(ABOVE_DOCK_CSS), mon);
+    let (x, y) = crate::shell::popup_pos(dr, ICON_CX.load(Ordering::SeqCst), (w, h), px(ABOVE_DOCK_CSS), px(8), mon);
     unsafe {
         let flags = if activate { SWP_SHOWWINDOW } else { SWP_NOACTIVATE };
         let _ = SetWindowPos(me, Some(HWND_TOPMOST), x, y, w, h, flags);

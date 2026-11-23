@@ -63,12 +63,6 @@ fn fit(src: (i32, i32), max: (i32, i32)) -> (i32, i32) {
     (((src.0 as f64 * s).round() as i32).max(1), ((src.1 as f64 * s).round() as i32).max(1))
 }
 
-/// Top-left of a popup of `size` centered on `icon_cx`, bottom edge at `bottom`, kept inside `mon`.
-fn place(size: (i32, i32), icon_cx: i32, bottom: i32, mon: RECT) -> (i32, i32) {
-    let x = (icon_cx - size.0 / 2).min(mon.right - size.0).max(mon.left);
-    (x, (bottom - size.1).max(mon.top))
-}
-
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct Item {
@@ -235,9 +229,7 @@ fn show(app: &AppHandle, group: &str, icon_cx: f64) -> Result<(), String> {
     let mut dr = RECT::default();
     unsafe { GetWindowRect(dock, &mut dr) }.map_err(|e| e.to_string())?;
     let size = (px(lay.w), px(lay.h));
-    let mon = crate::shell::primary_monitor();
-    let (x, _) = place(size, dr.left + (icon_cx * crate::shell::dock_k()).round() as i32, 0, mon);
-    let y = crate::shell::popup_y(dr, size.1, px(ABOVE_DOCK_CSS), mon);
+    let (x, y) = crate::shell::popup_pos(dr, crate::shell::along_pos(dr, icon_cx), size, px(ABOVE_DOCK_CSS), 0, crate::shell::primary_monitor());
 
     let items: Vec<Item> = live
         .iter()
@@ -364,12 +356,4 @@ mod tests {
         assert_eq!(fit((0, 0), (200, 120)), (200, 120));
     }
 
-    #[test]
-    fn place_centers_and_clamps() {
-        let mon = RECT { left: 0, top: 0, right: 2560, bottom: 1440 };
-        assert_eq!(place((200, 100), 1000, 1300, mon), (900, 1200));
-        assert_eq!(place((200, 100), 20, 1300, mon).0, 0);
-        assert_eq!(place((200, 100), 2550, 1300, mon).0, 2360);
-        assert_eq!(place((200, 100), 100, 50, mon).1, 0);
-    }
 }

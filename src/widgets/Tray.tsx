@@ -30,7 +30,7 @@ export function Tray() {
         onClick={(e) => {
           const r = e.currentTarget.getBoundingClientRect();
           const d = window.devicePixelRatio;
-          void openTrayOverflow(Math.round((window.screenX + r.left + r.width / 2) * d), Math.round((window.screenY + r.top) * d), openAtDown.current);
+          void openTrayOverflow(Math.round((window.screenX + r.left + r.width / 2) * d), Math.round((window.screenY + r.top + r.height / 2) * d), openAtDown.current);
         }}
       >
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l4-4 4 4" /></svg>

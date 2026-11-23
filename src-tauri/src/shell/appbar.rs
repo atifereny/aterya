@@ -1,13 +1,18 @@
 //! Reserve the bottom screen edge so maximized windows stop above the dock.
 use windows::Win32::Foundation::{HWND, RECT};
-use windows::Win32::UI::Shell::{SHAppBarMessage, ABE_BOTTOM, ABE_TOP, ABM_NEW, ABM_QUERYPOS, ABM_REMOVE, ABM_SETPOS, APPBARDATA};
+use windows::Win32::UI::Shell::{SHAppBarMessage, ABE_BOTTOM, ABE_LEFT, ABE_RIGHT, ABE_TOP, ABM_NEW, ABM_QUERYPOS, ABM_REMOVE, ABM_SETPOS, APPBARDATA};
 use windows::Win32::UI::WindowsAndMessaging::WM_APP;
 
 /// Message the shell sends the dock for ABN_* notifications (wParam = the ABN code).
 pub const CALLBACK: u32 = WM_APP + 1;
 
 fn data(hwnd: HWND) -> APPBARDATA {
-    let edge = if super::edge_top() { ABE_TOP } else { ABE_BOTTOM };
+    let edge = match super::edge() {
+        super::Edge::Bottom => ABE_BOTTOM,
+        super::Edge::Top => ABE_TOP,
+        super::Edge::Left => ABE_LEFT,
+        super::Edge::Right => ABE_RIGHT,
+    };
     APPBARDATA { cbSize: size_of::<APPBARDATA>() as u32, hWnd: hwnd, uCallbackMessage: CALLBACK, uEdge: edge, ..Default::default() }
 }
 
@@ -21,7 +26,12 @@ pub fn query(hwnd: HWND, monitor: RECT, height_px: i32) -> RECT {
         SHAppBarMessage(ABM_QUERYPOS, &mut d);
     }
     // the shell may move the edge past another appbar
-    if super::edge_top() { d.rc.bottom = d.rc.top + height_px } else { d.rc.top = d.rc.bottom - height_px }
+    match super::edge() {
+        super::Edge::Bottom => d.rc.top = d.rc.bottom - height_px,
+        super::Edge::Top => d.rc.bottom = d.rc.top + height_px,
+        super::Edge::Left => d.rc.right = d.rc.left + height_px,
+        super::Edge::Right => d.rc.left = d.rc.right - height_px,
+    }
     d.rc
 }
 

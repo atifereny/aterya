@@ -1,3 +1,4 @@
+import { along } from "../lib/axis";
 import { useEffect, useRef, useState } from "react";
 import { EVENTS, langGet, langList, langToggle, useEvent, type Lang } from "../lib/ipc";
 import { useSensors } from "./Rings";
@@ -107,7 +108,7 @@ export function KeyboardLang() {
       onPointerDown={() => { openAtDown.current = popOpen; }}
       onClick={async () => {
         const r = ref.current!.getBoundingClientRect();
-        await langToggle(r.left + r.width / 2, openAtDown.current ? 0 : (await langList()).length, openAtDown.current);
+        await langToggle(along(r), openAtDown.current ? 0 : (await langList()).length, openAtDown.current);
       }}
     >
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { appClick, appMenuToggle, tipHide, tipShow, AppEntry, EVENTS, previewHover, previewLeave, startMenu, useEvent, useSettings } from "../lib/ipc";
 import { StartIcon } from "../lib/StartIcon";
 import { ICON_GAP, iconSizeFor } from "../lib/fit";
+import { along } from "../lib/axis";
 
 const MAX_DOTS = 4; // one dot per open window, capped so the row stays tidy
 
@@ -52,7 +53,7 @@ export function AppRow({ availablePx }: { availablePx: number }) {
   const showTip = (text: string, sub: string, icon: string, el: HTMLElement) => {
     window.clearTimeout(tipTimer.current);
     const r = el.getBoundingClientRect();
-    tipTimer.current = window.setTimeout(() => void tipShow(text, sub, icon, r.left + r.width / 2), 380);
+    tipTimer.current = window.setTimeout(() => void tipShow(text, sub, icon, along(r)), 380);
   };
   const hideTip = () => {
     window.clearTimeout(tipTimer.current);
@@ -62,14 +63,14 @@ export function AppRow({ availablePx }: { availablePx: number }) {
   const size = iconSizeFor(apps.length + 1, availablePx, cfg?.iconSize, gap);
   const box = { width: size + 12, height: size + 12 };
   return (
-    <div className="app-row" data-apps style={{ display: "flex", alignItems: "center", gap }}>
+    <div className="app-row" data-apps style={{ display: "flex", flexDirection: cfg?.dockEdge === "left" || cfg?.dockEdge === "right" ? "column" : "row", alignItems: "center", gap }}>
       <div className="app" style={box} onMouseEnter={(e) => showTip("Başlat", "Windows", "", e.currentTarget)} onMouseLeave={hideTip} onClick={() => { hideTip(); void startMenu(); }}
         onPointerDown={() => { menuAtDown.current = menuOpen; }}
         onContextMenu={(e) => {
           e.preventDefault();
           e.stopPropagation();
           const r = e.currentTarget.getBoundingClientRect();
-          void appMenuToggle(r.left + r.width / 2, "winx", menuAtDown.current);
+          void appMenuToggle(along(r), "winx", menuAtDown.current);
         }}>
         <StartIcon kind={startIcon} size={size * 0.8} />
       </div>
@@ -81,7 +82,7 @@ export function AppRow({ availablePx }: { availablePx: number }) {
           onMouseEnter={(e) => {
             if (a.windowCount > 0) {
               const r = e.currentTarget.getBoundingClientRect();
-              void previewHover(a.id, r.left + r.width / 2);
+              void previewHover(a.id, along(r));
             } else {
               showTip(a.name, a.pinned ? "Çalışmıyor · açmak için tıkla" : "Açmak için tıkla", a.iconDataUrl, e.currentTarget);
             }
@@ -96,7 +97,7 @@ export function AppRow({ availablePx }: { availablePx: number }) {
             e.stopPropagation(); // the dock bar behind opens the settings on right-click
             void previewLeave();
             const r = e.currentTarget.getBoundingClientRect();
-            void appMenuToggle(r.left + r.width / 2, a.id, menuAtDown.current);
+            void appMenuToggle(along(r), a.id, menuAtDown.current);
           }}
           onClick={() => {
             hideTip();

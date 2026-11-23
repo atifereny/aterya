@@ -6,7 +6,7 @@ pub mod glass;
 pub mod taskbar;
 
 use std::sync::{Mutex, OnceLock};
-use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU32, AtomicU8, Ordering};
 use tauri::{Emitter, Manager, WebviewWindow};
 use windows::core::w;
 use windows::Win32::Foundation::{HWND, LPARAM, POINT, RECT, WPARAM};
@@ -55,22 +55,75 @@ fn radius_css() -> f64 {
 /// The dock page's zoom (f32 bits) and its gap to the screen edge (CSS px, f32 bits).
 static ZOOM: AtomicU32 = AtomicU32::new(0x3f80_0000); // 1.0
 static GAP: AtomicU32 = AtomicU32::new(0x4080_0000); // 4.0
-/// The dock sits on the top edge (false: the bottom one).
-static EDGE_TOP: AtomicBool = AtomicBool::new(false);
+/// The screen edge the dock sits on.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum Edge {
+    Bottom,
+    Top,
+    Left,
+    Right,
+}
+
+static EDGE: AtomicU8 = AtomicU8::new(0);
+
+fn edge_code(name: &str) -> u8 {
+    match name {
+        "top" => 1,
+        "left" => 2,
+        "right" => 3,
+        _ => 0,
+    }
+}
+
+pub(crate) fn edge() -> Edge {
+    match EDGE.load(Ordering::Relaxed) {
+        1 => Edge::Top,
+        2 => Edge::Left,
+        3 => Edge::Right,
+        _ => Edge::Bottom,
+    }
+}
 
 pub(crate) fn edge_top() -> bool {
-    EDGE_TOP.load(Ordering::Relaxed)
+    edge() == Edge::Top
 }
 
-/// The dock's strip `height` px thick along its edge of `mon`.
-pub(crate) fn edge_rect(mon: RECT, height: i32) -> RECT {
-    if edge_top() { RECT { bottom: mon.top + height, ..mon } } else { RECT { top: mon.bottom - height, ..mon } }
+/// A dock on the left or right edge runs top to bottom.
+pub(crate) fn vertical() -> bool {
+    matches!(edge(), Edge::Left | Edge::Right)
 }
 
-/// Top of a popup `h` px tall that opens `gap` px clear of the dock window `dock`, on the side facing the
-/// screen's middle, kept on the screen `mon`.
-pub(crate) fn popup_y(dock: RECT, h: i32, gap: i32, mon: RECT) -> i32 {
-    if edge_top() { (dock.bottom + gap).min(mon.bottom - h) } else { (dock.top - gap - h).max(mon.top) }
+/// The dock's strip `thick` px thick along its edge of `mon`.
+pub(crate) fn edge_rect(mon: RECT, thick: i32) -> RECT {
+    match edge() {
+        Edge::Bottom => RECT { top: mon.bottom - thick, ..mon },
+        Edge::Top => RECT { bottom: mon.top + thick, ..mon },
+        Edge::Left => RECT { right: mon.left + thick, ..mon },
+        Edge::Right => RECT { left: mon.right - thick, ..mon },
+    }
+}
+
+/// Where an icon sits along the dock (physical px): `c` is its center in the dock page's CSS px along the
+/// dock's own axis (x for a horizontal dock, y for a vertical one).
+pub(crate) fn along_pos(dock: RECT, c: f64) -> i32 {
+    (if vertical() { dock.top } else { dock.left }) + (c * dock_k()).round() as i32
+}
+
+/// Top-left of a `w` x `h` popup opening `gap` px clear of the dock window `dock`, on the side facing the
+/// screen's middle, centered on `along` (physical px along the dock) and kept `margin` px inside `mon`.
+pub(crate) fn popup_pos(dock: RECT, along: i32, (w, h): (i32, i32), gap: i32, margin: i32, mon: RECT) -> (i32, i32) {
+    match edge() {
+        Edge::Bottom | Edge::Top => {
+            let x = (along - w / 2).min(mon.right - w - margin).max(mon.left + margin);
+            let y = if edge_top() { (dock.bottom + gap).min(mon.bottom - h) } else { (dock.top - gap - h).max(mon.top) };
+            (x, y)
+        }
+        side => {
+            let y = (along - h / 2).min(mon.bottom - h - margin).max(mon.top + margin);
+            let x = if side == Edge::Left { (dock.right + gap).min(mon.right - w) } else { (dock.left - gap - w).max(mon.left) };
+            (x, y)
+        }
+    }
 }
 
 /// Device name of the chosen screen; empty means the primary one.
@@ -201,13 +254,16 @@ fn place(hwnd: HWND) {
         *last = Some((want, dpi));
         log::info!("[shell] dock placed at {},{} {}x{}", rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top);
         let hidden = auto && HIDDEN.load(Ordering::Relaxed);
-        let y = match (hidden, edge_top()) {
-            (false, _) => rc.top,
-            (true, false) => mon.bottom,
-            (true, true) => mon.top - (rc.bottom - rc.top),
+        let (w, h) = (rc.right - rc.left, rc.bottom - rc.top);
+        let (x, y) = match (hidden, edge()) {
+            (false, _) => (rc.left, rc.top),
+            (true, Edge::Bottom) => (rc.left, mon.bottom),
+            (true, Edge::Top) => (rc.left, mon.top - h),
+            (true, Edge::Left) => (mon.left - w, rc.top),
+            (true, Edge::Right) => (mon.right, rc.top),
         };
         unsafe {
-            let _ = SetWindowPos(hwnd, Some(HWND_TOPMOST), rc.left, y, rc.right - rc.left, rc.bottom - rc.top, SWP_NOACTIVATE);
+            let _ = SetWindowPos(hwnd, Some(HWND_TOPMOST), x, y, w, h, SWP_NOACTIVATE);
         }
     }
     drop(last);
@@ -223,7 +279,7 @@ pub fn apply_dock(app: &tauri::AppHandle) {
     ZOOM.store(z.to_bits(), Ordering::Relaxed);
     RADIUS.store((crate::settings::dock_radius(&cfg) as f32).to_bits(), Ordering::Relaxed);
     let was_auto = AUTOHIDE.swap(cfg.dock_autohide, Ordering::Relaxed);
-    let edge_changed = EDGE_TOP.swap(cfg.dock_edge == "top", Ordering::Relaxed) != (cfg.dock_edge == "top");
+    let edge_changed = EDGE.swap(edge_code(&cfg.dock_edge), Ordering::Relaxed) != edge_code(&cfg.dock_edge);
     if !cfg.dock_autohide {
         HIDDEN.store(false, Ordering::Relaxed);
     }
@@ -257,7 +313,7 @@ pub fn setup(app: &tauri::AppHandle) -> tauri::Result<()> {
         GAP.store((crate::settings::dock_gap(&cfg) as f32).to_bits(), Ordering::Relaxed);
         ZOOM.store((crate::settings::dock_scale(&cfg) as f32).to_bits(), Ordering::Relaxed);
         AUTOHIDE.store(cfg.dock_autohide, Ordering::Relaxed);
-        EDGE_TOP.store(cfg.dock_edge == "top", Ordering::Relaxed);
+        EDGE.store(edge_code(&cfg.dock_edge), Ordering::Relaxed);
         RADIUS.store((crate::settings::dock_radius(&cfg) as f32).to_bits(), Ordering::Relaxed);
         let _ = win.set_zoom(zoom());
     }

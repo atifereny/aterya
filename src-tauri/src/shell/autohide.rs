@@ -41,7 +41,8 @@ fn wanted_for_other_reasons() -> bool {
     pid == unsafe { GetCurrentProcessId() } || matches!(exe.as_str(), "startmenuexperiencehost.exe" | "searchhost.exe" | "shellexperiencehost.exe")
 }
 
-fn slide(h: HWND, from: i32, to: i32) {
+/// Slide the dock along its screen-normal axis (x for a side dock, y otherwise) from `from` to `to`.
+fn slide(h: HWND, from: i32, to: i32, vertical: bool) {
     let mut rc = RECT::default();
     if unsafe { GetWindowRect(h, &mut rc) }.is_err() {
         return;
@@ -50,9 +51,10 @@ fn slide(h: HWND, from: i32, to: i32) {
     for i in 1..=STEPS {
         let t = i as f64 / STEPS as f64;
         let e = 1.0 - (1.0 - t).powi(3); // ease-out
-        let y = from + ((to - from) as f64 * e).round() as i32;
+        let v = from + ((to - from) as f64 * e).round() as i32;
+        let (x, y) = if vertical { (v, rc.top) } else { (rc.left, v) };
         unsafe {
-            let _ = SetWindowPos(h, Some(HWND_TOPMOST), rc.left, y, 0, 0, SWP_NOACTIVATE | SWP_NOSIZE);
+            let _ = SetWindowPos(h, Some(HWND_TOPMOST), x, y, 0, 0, SWP_NOACTIVATE | SWP_NOSIZE);
         }
         std::thread::sleep(Duration::from_millis(14));
     }
@@ -77,29 +79,47 @@ pub fn start() {
             if unsafe { GetWindowRect(h, &mut rc) }.is_err() {
                 continue;
             }
-            let height = rc.bottom - rc.top;
-            let top = super::edge_top();
-            let shown_y = if top { mon.top } else { mon.bottom - height };
-            let hidden_y = if top { mon.top - height } else { mon.bottom };
+            let edge = super::edge();
+            let vertical = super::vertical();
+            let t = if vertical { rc.right - rc.left } else { rc.bottom - rc.top }; // thickness
+            // Where the dock's near edge sits shown and hidden.
+            let (shown, hidden) = match edge {
+                super::Edge::Bottom => (mon.bottom - t, mon.bottom),
+                super::Edge::Top => (mon.top, mon.top - t),
+                super::Edge::Left => (mon.left, mon.left - t),
+                super::Edge::Right => (mon.right - t, mon.right),
+            };
             let mut p = POINT::default();
             let _ = unsafe { GetCursorPos(&mut p) };
-            let in_x = p.x >= mon.left && p.x < mon.right;
-            let at_edge = in_x && if top { p.y <= mon.top } else { p.y >= mon.bottom - 1 };
+            let (along, across) = if vertical { (p.y, p.x) } else { (p.x, p.y) };
+            let (lo, hi) = if vertical { (mon.top, mon.bottom) } else { (mon.left, mon.right) };
+            let in_x = along >= lo && along < hi;
+            let at_edge = in_x
+                && match edge {
+                    super::Edge::Bottom => across >= mon.bottom - 1,
+                    super::Edge::Top => across <= mon.top,
+                    super::Edge::Left => across <= mon.left,
+                    super::Edge::Right => across >= mon.right - 1,
+                };
             let other = wanted_for_other_reasons();
             if super::HIDDEN.load(Ordering::Relaxed) {
                 if at_edge || other {
                     super::HIDDEN.store(false, Ordering::Relaxed);
-                    slide(h, rc.top, shown_y);
+                    slide(h, if vertical { rc.left } else { rc.top }, shown, vertical);
                     log::info!("[autohide] dock shown");
                 }
                 outside_since = None;
             } else {
-                let in_band = in_x && if top { p.y <= mon.top + height + BAND_SLACK } else { p.y >= shown_y - BAND_SLACK };
+                let in_band = in_x
+                    && match edge {
+                        super::Edge::Bottom | super::Edge::Right => across >= shown - BAND_SLACK,
+                        super::Edge::Top | super::Edge::Left => across <= shown + t + BAND_SLACK,
+                    };
                 if in_band || other {
                     outside_since = None;
                 } else if outside_since.get_or_insert_with(Instant::now).elapsed() >= DWELL {
                     super::HIDDEN.store(true, Ordering::Relaxed);
-                    slide(h, rc.top, hidden_y);
+                    slide(h, if vertical { rc.left } else { rc.top }, hidden, vertical);
                     outside_since = None;
                     log::info!("[autohide] dock hidden");
                 }

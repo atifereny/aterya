@@ -417,3 +417,16 @@ html:has(.snote), html:has(.snote) body, html:has(.snote) #root { background: tr
 html[data-edge="top"] #root { position: absolute; left: 0; right: 0; bottom: 0; }
 html[data-edge="top"] .app-row .app:hover > :not(.dots) { transform: translateY(4px) scale(1.25); }
 html[data-edge="top"][data-lift="off"] .app-row .app:hover > :not(.dots) { transform: none; }
+
+/* Dock on the left or right edge: a column. The pill hugs the window's inner side, the gap to the screen edge is outside it. */
+html[data-edge="left"] #root, html[data-edge="right"] #root { position: absolute; top: 0; bottom: 0; width: 64px; }
+html[data-edge="left"] #root { right: 0; }
+html[data-edge="right"] #root { left: 0; }
+html[data-edge="left"] #dock, html[data-edge="right"] #dock { height: 100%; width: 64px; flex-direction: column; justify-content: center; align-items: flex-start; }
+html[data-edge="left"] .pill, html[data-edge="right"] .pill { height: auto; width: 64px; max-width: none; max-height: 90vh; flex-direction: column; padding: 12px 0; }
+html[data-edge="left"] .sep, html[data-edge="right"] .sep { width: 34px; height: var(--div-w, 1px); margin: 4px 0; }
+html[data-edge="left"] .app-row .app:hover > :not(.dots) { transform: translateX(4px) scale(1.25); }
+html[data-edge="right"] .app-row .app:hover > :not(.dots) { transform: translateX(-4px) scale(1.25); }
+html[data-edge="left"][data-lift="off"] .app-row .app:hover > :not(.dots), html[data-edge="right"][data-lift="off"] .app-row .app:hover > :not(.dots) { transform: none; }
+html[data-edge="left"] .dots, html[data-edge="right"] .dots { top: 0; bottom: 0; right: auto; left: -6px; flex-direction: column; justify-content: center; }
+html[data-edge="right"] .dots { left: auto; right: -6px; }

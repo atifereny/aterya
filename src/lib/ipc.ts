@@ -122,7 +122,7 @@ export const openNotifications = () => invoke<void>("open_notifications");
 /** Resolves to whether DWM blur is live behind the pill. */
 export const setPillBounds = (x: number, y: number, width: number, height: number) =>
   invoke<boolean>("set_pill_bounds", { x, y, width, height });
-export const setDockEdge = (edge: "bottom" | "top") => invoke<void>("set_dock_edge", { edge });
+export const setDockEdge = (edge: "bottom" | "top" | "left" | "right") => invoke<void>("set_dock_edge", { edge });
 
 export interface PreviewItem {
   hwnd: string;
@@ -187,7 +187,7 @@ export interface Settings {
   indicator: "dot" | "bigdot" | "line";
   startIcon: StartIconKind;
   dockMonitor: string;
-  dockEdge: "bottom" | "top";
+  dockEdge: "bottom" | "top" | "left" | "right";
   dockScale: number;
   dockGap: number;
   dockAutohide: boolean;

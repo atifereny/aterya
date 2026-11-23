@@ -1,3 +1,4 @@
+import { along } from "../lib/axis";
 import { useEffect, useRef, useState } from "react";
 import { appMenuToggle, binEmpty, binGet, binOpen, clipCount, EVENTS, micGet, micToggle, noteNew, notesCount, useEvent, type BinState, type MicState } from "../lib/ipc";
 
@@ -87,7 +88,7 @@ export function Clipboard() {
       }}
       onClick={() => {
         const r = ref.current!.getBoundingClientRect();
-        void appMenuToggle(r.left + r.width / 2, "clip", openAtDown.current);
+        void appMenuToggle(along(r), "clip", openAtDown.current);
       }}
     >
       <svg {...svg}>

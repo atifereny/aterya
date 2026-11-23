@@ -435,12 +435,12 @@ function DockTab({ s }: { s: Cfg }) {
       <div className="card static">
         <div className="meta">
           <b>Konum</b>
-          <span>Dock'un ekranın hangi kenarında duracağı.</span>
+          <span>Dock'un ekranın hangi kenarında duracağı. Sol ve sağda dock dikey olur ve yalnızca uygulamaları ile küçük widget'ları gösterir.</span>
         </div>
         <div className="keypick">
-          {(["bottom", "top"] as const).map((k) => (
+          {(["bottom", "top", "left", "right"] as const).map((k) => (
             <button key={k} className={s.dockEdge === k ? "keybtn rec" : "keybtn"} onClick={() => void setDockEdge(k)}>
-              {k === "bottom" ? "Alt" : "Üst"}
+              {k === "bottom" ? "Alt" : k === "top" ? "Üst" : k === "left" ? "Sol" : "Sağ"}
             </button>
           ))}
         </div>

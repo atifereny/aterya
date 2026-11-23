@@ -1,3 +1,4 @@
+import { along } from "../lib/axis";
 import { useRef } from "react";
 import { EVENTS, mixerList, mixerToggle, openQuickSettings, outdevToggle, setVolume, useEvent, type SystemState } from "../lib/ipc";
 import { stepVolume } from "../lib/clock";
@@ -14,7 +15,7 @@ export function SystemControls() {
   const langOpen = useEvent<boolean>(EVENTS.langOpen, false);
   const openMixer = async () => {
     const r = vol.current!.getBoundingClientRect();
-    await mixerToggle(r.left + r.width / 2, openAtDown.current ? 0 : (await mixerList()).length, openAtDown.current);
+    await mixerToggle(along(r), openAtDown.current ? 0 : (await mixerList()).length, openAtDown.current);
   };
   return (
     <div className="tile system">
@@ -28,7 +29,7 @@ export function SystemControls() {
           e.preventDefault();
           e.stopPropagation();
           const r = vol.current!.getBoundingClientRect();
-          void outdevToggle(r.left + r.width / 2, langAtDown.current);
+          void outdevToggle(along(r), langAtDown.current);
         }}
         onWheel={(e) => void setVolume(stepVolume(s.volume, e.deltaY))}
       >

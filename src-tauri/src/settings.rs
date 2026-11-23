@@ -36,7 +36,7 @@ pub struct Settings {
 
 /// "bottom" or "top"; anything else (or empty) is the bottom.
 pub(crate) fn edge_name(c: &Config) -> String {
-    if c.dock_edge == "top" { "top".into() } else { "bottom".into() }
+    if ["top", "left", "right"].contains(&c.dock_edge.as_str()) { c.dock_edge.clone() } else { "bottom".into() }
 }
 
 pub(crate) fn dock_scale(c: &Config) -> f64 {
@@ -146,7 +146,7 @@ pub async fn set_dock(app: AppHandle, monitor: String, scale: f64, gap: f64) -> 
 #[tauri::command]
 pub async fn set_dock_edge(app: AppHandle, edge: String) -> Result<(), String> {
     let mut c = current()?;
-    c.dock_edge = if edge == "top" { "top".into() } else { "bottom".into() };
+    c.dock_edge = if ["top", "left", "right"].contains(&edge.as_str()) { edge } else { "bottom".into() };
     save_and_emit(&app, &c)?;
     crate::shell::apply_dock(&app);
     Ok(())
