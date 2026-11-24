@@ -542,3 +542,12 @@ html[data-edge="right"] .dots { left: auto; right: -6px; }
 @media (prefers-reduced-motion: reduce) { .cal-ic.spin svg { animation: none; } }
 .cal-add .cal-sw { width: 20px; height: 20px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; flex: none; }
 .cal-add .cal-sw.on { border-color: #fff; box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.4); }
+
+/* The clock's date folds away and back instead of popping. */
+.tile.clock { transition: transform 180ms cubic-bezier(0.22, 1, 0.36, 1), background 150ms, gap 360ms cubic-bezier(0.22, 1, 0.36, 1); }
+.clock .clock-date { display: inline-block; overflow: hidden; white-space: nowrap; max-width: 120px; opacity: 1; transition: max-width 360ms cubic-bezier(0.22, 1, 0.36, 1), opacity 240ms ease-out; }
+.clock .clock-date.gone { max-width: 0; opacity: 0; }
+.tile.clock:has(.clock-date.gone) { gap: 0; }
+.tile.side.clock .clock-date { display: block; max-width: none; max-height: 20px; transition: max-height 360ms cubic-bezier(0.22, 1, 0.36, 1), opacity 240ms ease-out; }
+.tile.side.clock .clock-date.gone { max-width: none; max-height: 0; }
+@media (prefers-reduced-motion: reduce) { .clock .clock-date, .tile.clock { transition: none; } }

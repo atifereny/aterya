@@ -25,7 +25,7 @@ export function Clock() {
   return (
     <div className="tile clock" onClick={() => void openNotifications()}>
       <span className="big">{time}</span>
-      {showDate && <span className="dim">{date}</span>}
+      <span className={showDate ? "dim clock-date" : "dim clock-date gone"}>{date}</span>
     </div>
   );
 }

@@ -17,7 +17,7 @@ export function SideClock() {
     <div className="tile side clock" onClick={() => void openNotifications()} title={formatClock(now).date}>
       <span className="big">{two(now.getHours())}</span>
       <span className="big">{two(now.getMinutes())}</span>
-      {showDate && <span className="dim">{now.toLocaleDateString("tr-TR", { day: "numeric", month: "short" })}</span>}
+      <span className={showDate ? "dim clock-date" : "dim clock-date gone"}>{now.toLocaleDateString("tr-TR", { day: "numeric", month: "short" })}</span>
     </div>
   );
 }
