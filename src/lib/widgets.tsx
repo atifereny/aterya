@@ -15,6 +15,7 @@ import { ShowDesktop } from "../widgets/ShowDesktop";
 import { BatteryRing, CpuRing, GpuRing } from "../widgets/Rings";
 import { KeyboardLang, MemoryUsage, NetSpeed, Storage } from "../widgets/Usage";
 import { Bluetooth, SideBluetooth } from "../widgets/Bluetooth";
+import { Calendar, SideCalendar } from "../widgets/Calendar";
 import { Clipboard, Microphone, RecycleBin, StickyNotes } from "../widgets/Extras";
 import { SideBrightness, SideClaude, SideClock, SideMemory, SideNetSpeed, SideNowPlaying, SideScreenTime, SideWeather } from "../widgets/Side";
 
@@ -47,4 +48,5 @@ export const WIDGET_INFO: Record<WidgetId, { label: string; desc: string; catego
   stickynotes: { label: "Yapışkan notlar", desc: "Tıklayınca masaüstüne yeni bir yapışkan not koyar. Notlar yerinde kalır, taşınır ve yeniden boyutlandırılır.", category: "Üretkenlik", group: "info", render: () => <StickyNotes /> },
   clipboard: { label: "Pano geçmişi", desc: "Son kopyaladığın metinler. Tıklayınca liste açılır, birine basınca tekrar panoya alınır. Geçmiş sadece bellekte tutulur, diske yazılmaz; parola yöneticilerinin kopyaları kaydedilmez.", category: "Üretkenlik", group: "info", render: () => <Clipboard /> },
   bluetooth: { label: "Bluetooth", desc: "Bluetooth'u açıp kapatır; seçtiğin cihazların simgesini ve şarjını gösterir. Tıklayınca bağlı cihazlar, şarj seviyeleri ve simge seçimi açılır.", category: "Sistem", group: "system", render: () => <Bluetooth />, side: () => <SideBluetooth /> },
+  calendar: { label: "Takvim", desc: "Bugünün tarihi ve sıradaki etkinlik. Tıklayınca ay takvimi açılır; Google Takvim, Outlook ve iCloud takvimlerini (iCal adresiyle) ve kendi etkinliklerini gösterir.", category: "Üretkenlik", group: "info", render: () => <Calendar />, side: () => <SideCalendar /> },
 };

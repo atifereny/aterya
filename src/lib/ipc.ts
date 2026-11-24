@@ -58,6 +58,7 @@ export const EVENTS = {
   claude: "claude://changed",
   battery: "battery://changed",
   btOpen: "bt://open",
+  calOpen: "cal://open",
   system: "system://changed",
   visibility: "dock://visibility",
   trayFlyout: "tray://flyout", // payload: boolean, overflow flyout open
@@ -179,7 +180,39 @@ export const btSetPref = (id: string, show: boolean, icon: string) => invoke<voi
 export const btToggle = (iconCx: number, height: number, wasOpen: boolean) => invoke<void>("bt_toggle", { iconCx, height, wasOpen });
 export const btFit = (height: number) => invoke<void>("bt_fit", { height });
 
-export type WidgetId = "apps" | "nowplaying" | "weather" | "claude" | "batteries" | "tray" | "system" | "clock" | "screentime" | "topcpu" | "topram" | "brightness" | "notifications" | "showdesktop" | "batteryring" | "cpuring" | "gpuring" | "memory" | "storage" | "netspeed" | "keyboardlang" | "microphone" | "recyclebin" | "stickynotes" | "clipboard" | "bluetooth";
+export interface CalEvent {
+  id: string;
+  title: string;
+  location: string;
+  start: number;
+  end: number;
+  allDay: boolean;
+  color: string;
+  source: string;
+  local: boolean;
+}
+export interface CalSourceInfo {
+  id: string;
+  name: string;
+  color: string;
+  error: string | null;
+  count: number;
+}
+export interface CalState {
+  sources: CalSourceInfo[];
+  events: CalEvent[];
+}
+export const calState = (from: number, to: number) => invoke<CalState>("cal_state", { from, to });
+export const calRefresh = () => invoke<void>("cal_refresh");
+export const calSourceAdd = (name: string, url: string, color: string) => invoke<void>("cal_source_add", { name, url, color });
+export const calSourceRemove = (id: string) => invoke<void>("cal_source_remove", { id });
+export const calEventAdd = (title: string, start: number, end: number, allDay: boolean, color: string) =>
+  invoke<void>("cal_event_add", { title, start, end, allDay, color });
+export const calEventDelete = (id: string) => invoke<void>("cal_event_delete", { id });
+export const calToggle = (iconCx: number) => invoke<void>("cal_toggle", { iconCx });
+export const calFit = (height: number) => invoke<void>("cal_fit", { height });
+
+export type WidgetId = "apps" | "nowplaying" | "weather" | "claude" | "batteries" | "tray" | "system" | "clock" | "screentime" | "topcpu" | "topram" | "brightness" | "notifications" | "showdesktop" | "batteryring" | "cpuring" | "gpuring" | "memory" | "storage" | "netspeed" | "keyboardlang" | "microphone" | "recyclebin" | "stickynotes" | "clipboard" | "bluetooth" | "calendar";
 export interface LayoutCfg {
   order: WidgetId[];
   hidden: WidgetId[];

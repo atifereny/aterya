@@ -87,7 +87,7 @@ export function BtPopup() {
   useEffect(() => {
     const el = box.current;
     if (!el) return;
-    const ro = new ResizeObserver(() => void btFit(Math.ceil(el.getBoundingClientRect().height) + 20));
+    const ro = new ResizeObserver(() => void btFit(el.offsetHeight + 30));
     ro.observe(el);
     return () => ro.disconnect();
   }, []);

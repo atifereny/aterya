@@ -37,7 +37,7 @@ impl Default for PollCfg {
 }
 
 /// Widgets the dock can show, in default order. Start button and app row are fixed.
-pub const WIDGETS: [&str; 26] = ["apps", "nowplaying", "weather", "claude", "batteries", "tray", "system", "clock", "screentime", "topcpu", "topram", "brightness", "notifications", "showdesktop", "batteryring", "cpuring", "gpuring", "memory", "storage", "netspeed", "keyboardlang", "microphone", "recyclebin", "stickynotes", "clipboard", "bluetooth"];
+pub const WIDGETS: [&str; 27] = ["apps", "nowplaying", "weather", "claude", "batteries", "tray", "system", "clock", "screentime", "topcpu", "topram", "brightness", "notifications", "showdesktop", "batteryring", "cpuring", "gpuring", "memory", "storage", "netspeed", "keyboardlang", "microphone", "recyclebin", "stickynotes", "clipboard", "bluetooth", "calendar"];
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -130,6 +130,29 @@ impl Default for BtPref {
     }
 }
 
+/// A calendar the user subscribes to by its iCal (ICS) address. The address is a secret: it lives only here.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct CalSource {
+    pub id: String,
+    pub name: String,
+    pub url: String,
+    /// #rrggbb
+    pub color: String,
+}
+
+/// An event the user keeps in Aterya itself. start/end are milliseconds since the epoch.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct LocalEvent {
+    pub id: String,
+    pub title: String,
+    pub start: i64,
+    pub end: i64,
+    pub all_day: bool,
+    pub color: String,
+}
+
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Config {
@@ -142,6 +165,9 @@ pub struct Config {
     pub floating: Vec<FloatCfg>,
     /// Bluetooth devices by name: shown on the dock or not, and the chosen icon.
     pub bt_prefs: std::collections::HashMap<String, BtPref>,
+    /// Calendars subscribed to, and the user's own events.
+    pub cal_sources: Vec<CalSource>,
+    pub cal_local: Vec<LocalEvent>,
     /// Per-widget size factor (0.6..=3.0), missing means 1.
     pub scales: std::collections::HashMap<String, f64>,
     /// Brightness widget: "row" (side by side) or "column" (stacked).

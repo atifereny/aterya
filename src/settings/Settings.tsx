@@ -4,10 +4,11 @@ import { listen } from "@tauri-apps/api/event";
 import { StartIcon, START_ICONS } from "../lib/StartIcon";
 import { autostartGet, autostartSet, backupExport, backupImport, setAutoUpdate, updateCheck, updateInstall, updateState, type UpdateInfo, setAutohide, setDockEdge, setHoverLift, setDividerWidth, setIcons, setLook, demo, monitorsList, setMonitorOrder, setDock, type MonitorInfo, requestState, setIndicator, setStartIcon, floatClose, floatOpen, floatPin, quitApp, setBrightnessLayout, setWidgetScale, restartApp, setBringKey, setBringToMain, setLayout, setTheme, useSettings, type FloatCfg, type LayoutCfg, type Settings as Cfg, type ThemeCfg, type WidgetId } from "../lib/ipc";
 import { WIDGET_INFO } from "../lib/widgets";
+import { CalendarTab } from "./CalendarTab";
 import { Zoom } from "../lib/Zoom";
 import "./settings.css";
 
-type Tab = "widgets" | "order" | "dock" | "desktop" | "design" | "behavior";
+type Tab = "widgets" | "order" | "dock" | "desktop" | "calendar" | "design" | "behavior";
 
 type Scheme = "system" | "dark" | "light";
 // Accent: null follows the scheme (dark: orange, light: turquoise); the others are [dark value, light value].
@@ -59,10 +60,11 @@ const NAV_ICON: Record<Tab, string> = {
   order: "M3 6h18v12H3zM8 6v12M16 6v12",
   dock: "M3 6h18v12H3zM3 14h18",
   desktop: "M3 5h18v11H3zM8 20h8M12 16v4",
+  calendar: "M4 6h16v14H4zM4 10h16M8 3v4M16 3v4",
   design: "M12 3a9 9 0 1 0 0 18c1.4 0 2-1 1.4-2.1-.6-1.2.2-2.4 1.6-2.4H17a4 4 0 0 0 4-4C21 6.6 17 3 12 3z",
   behavior: "M4 7h10M18 7h2M4 17h2M10 17h10M16 5v4M8 15v4",
 };
-const TAB_NAME: Record<Tab, string> = { widgets: "Widget'lar", order: "Çubuk", dock: "Dock", desktop: "Masaüstü", design: "Tasarım", behavior: "Davranış" };
+const TAB_NAME: Record<Tab, string> = { widgets: "Widget'lar", order: "Çubuk", dock: "Dock", desktop: "Masaüstü", calendar: "Takvim", design: "Tasarım", behavior: "Davranış" };
 
 const CATEGORIES: { name: string; desc: string }[] = [
   { name: "Uygulamalar ve dosyalar", desc: "Başlat, sabit uygulamalar, son açılanlar, arama, komutlar." },
@@ -957,7 +959,7 @@ export function Settings() {
           </button>
         </div>
       </nav>
-      <main>{tab === "widgets" ? <Catalog layout={s.layout} floating={s.floating} goDesktop={() => setTab("desktop")} scales={s.scales} brightnessLayout={s.brightnessLayout} /> : tab === "order" ? <Order layout={s.layout} floating={s.floating} layout_scales={s.scales} dividerWidth={s.dividerWidth} /> : tab === "dock" ? <DockTab s={s} /> : tab === "desktop" ? <Desktop floating={s.floating} /> : tab === "design" ? <Design theme={s.theme} startIcon={s.startIcon} look={look} setLook={setLook} s={s} /> : <Behavior bringToMain={s.bringToMain} bringKey={s.bringKey} indicator={s.indicator} hoverLift={s.hoverLift} s={s} />}</main>
+      <main>{tab === "widgets" ? <Catalog layout={s.layout} floating={s.floating} goDesktop={() => setTab("desktop")} scales={s.scales} brightnessLayout={s.brightnessLayout} /> : tab === "order" ? <Order layout={s.layout} floating={s.floating} layout_scales={s.scales} dividerWidth={s.dividerWidth} /> : tab === "dock" ? <DockTab s={s} /> : tab === "desktop" ? <Desktop floating={s.floating} /> : tab === "calendar" ? <CalendarTab /> : tab === "design" ? <Design theme={s.theme} startIcon={s.startIcon} look={look} setLook={setLook} s={s} /> : <Behavior bringToMain={s.bringToMain} bringKey={s.bringKey} indicator={s.indicator} hoverLift={s.hoverLift} s={s} />}</main>
       </div>
     </div>
   );

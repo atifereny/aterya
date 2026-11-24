@@ -9,8 +9,14 @@ it("event names match the backend contract", () => {
     "weather://changed",
     "claude://changed",
     "battery://changed",
+    "bt://open",
+    "cal://open",
     "system://changed",
     "dock://visibility",
+    "tray://flyout",
+    "mixer://open",
+    "settings://changed",
+    "lang://open",
     "dock://glass",
   ]);
 });
