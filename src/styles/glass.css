@@ -450,13 +450,17 @@ html[data-edge="right"] .dots { left: auto; right: -6px; }
 :is(html[data-edge="left"], html[data-edge="right"]) .chip-w { display: none; }
 
 /* Bluetooth widget and popup. */
-.tile.btw { gap: 10px; cursor: pointer; }
+.tile.btw { gap: 0; cursor: pointer; }
 .btw.off { opacity: 0.55; }
 .btw .bt-main { display: inline-flex; color: var(--dock-acc, #7aa2ff); }
-.btw .bt-dev { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
+.btw .bt-dev { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; margin-left: 10px; max-width: 90px; overflow: hidden; white-space: nowrap; opacity: 1; transform: none; animation: bt-in 360ms cubic-bezier(0.22, 1, 0.36, 1) backwards; transition: max-width 360ms cubic-bezier(0.22, 1, 0.36, 1), margin-left 360ms cubic-bezier(0.22, 1, 0.36, 1), opacity 240ms ease-out, transform 360ms cubic-bezier(0.22, 1, 0.36, 1); }
+.btw .bt-dev.gone { max-width: 0; margin-left: 0; opacity: 0; transform: scale(0.6); pointer-events: none; }
+@keyframes bt-in { from { max-width: 0; margin-left: 0; opacity: 0; transform: scale(0.6); } }
 .btw .bt-dev b { font-variant-numeric: tabular-nums; }
-.tile.side.btw { gap: 6px; }
-.tile.side.btw .bt-dev { flex-direction: column; gap: 1px; font-size: 11px; }
+.tile.side.btw { gap: 0; }
+.tile.side.btw .bt-dev { flex-direction: column; gap: 1px; font-size: 11px; margin-left: 0; margin-top: 6px; max-width: none; max-height: 48px; transition: max-height 360ms cubic-bezier(0.22, 1, 0.36, 1), margin-top 360ms cubic-bezier(0.22, 1, 0.36, 1), opacity 240ms ease-out, transform 360ms cubic-bezier(0.22, 1, 0.36, 1); animation-name: bt-in-v; }
+.tile.side.btw .bt-dev.gone { max-width: none; max-height: 0; margin-top: 0; }
+@keyframes bt-in-v { from { max-height: 0; margin-top: 0; opacity: 0; transform: scale(0.6); } }
 .mx.bt { overflow: hidden; }
 .bt-box { display: flex; flex-direction: column; }
 .bt-row.off { opacity: 0.5; }
@@ -466,7 +470,7 @@ html[data-edge="right"] .dots { left: auto; right: -6px; }
 .bt-bar { height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
 .bt-bar i { display: block; height: 100%; border-radius: 3px; transition: width 300ms; }
 .bt-pct { min-width: 36px; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
-.bt-eye { background: none; border: 0; color: inherit; opacity: 0.4; cursor: pointer; width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; flex: none; }
+.bt-eye { transition: opacity 200ms, color 200ms, background 150ms; background: none; border: 0; color: inherit; opacity: 0.4; cursor: pointer; width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; flex: none; }
 .bt-eye.on { opacity: 1; color: #ff8f3d; }
 .bt-eye:hover { background: rgba(255, 255, 255, 0.12); }
 .bt-icons { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 8px 8px 50px; }
@@ -479,3 +483,5 @@ html[data-edge="right"] .dots { left: auto; right: -6px; }
 .bt-sw.on i { transform: translateX(18px); }
 .bt-sw:disabled { opacity: 0.4; cursor: default; }
 .bt-hint { padding: 6px 4px 2px; font-size: 11px; opacity: 0.6; text-align: center; }
+
+@media (prefers-reduced-motion: reduce) { .btw .bt-dev, .tile.side.btw .bt-dev { transition: none; animation: none; } }

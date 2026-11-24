@@ -212,6 +212,8 @@ pub async fn bt_set_power(app: AppHandle, on: bool) -> Result<(), String> {
 pub async fn bt_set_pref(app: AppHandle, id: String, show: bool, icon: String) -> Result<(), String> {
     let mut c = current()?;
     let icon = if ICONS.contains(&icon.as_str()) { icon } else { String::new() };
+    // Tell the widgets first, so they animate at once; the full state follows once it is saved.
+    let _ = app.emit("bt://pref", serde_json::json!({ "id": id, "show": show, "icon": icon }));
     c.bt_prefs.insert(id, BtPref { show, icon });
     save_and_emit(&app, &c)?;
     let _ = app.emit("bt://changed", ());

@@ -71,7 +71,7 @@ export function BtPopup() {
     const load = () => void btGet().then((n) => live && setS((o) => (JSON.stringify(o) === JSON.stringify(n) ? o : n)));
     load();
     const t = setInterval(load, openEvt ? 2000 : 15000);
-    const un = listen("bt://changed", () => setTimeout(load, 300));
+    const un = listen("bt://changed", () => load());
     return () => {
       live = false;
       clearInterval(t);
