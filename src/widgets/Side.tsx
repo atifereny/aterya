@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { brightnessGet, brightnessSet, EVENTS, mediaControl, openNotifications, screentimeGet, useEvent, type ClaudeUsage as Usage, type Display, type MediaState, type ScreenTime as Report, type Weather as WeatherData } from "../lib/ipc";
+import { brightnessGet, brightnessSet, EVENTS, mediaControl, openNotifications, screentimeGet, useEvent, useSettings, type ClaudeUsage as Usage, type Display, type MediaState, type ScreenTime as Report, type Weather as WeatherData } from "../lib/ipc";
 import { weatherLabel } from "../lib/weatherCodes";
 import { formatClock } from "../lib/clock";
 import { useNow } from "./Clock";
@@ -12,11 +12,12 @@ const level = (p: number) => (p >= 90 ? "#f87171" : p >= 75 ? "#fbbf24" : "var(-
 export function SideClock() {
   const now = useNow();
   const two = (n: number) => String(n).padStart(2, "0");
+  const showDate = useSettings()?.clockDate ?? true;
   return (
     <div className="tile side clock" onClick={() => void openNotifications()} title={formatClock(now).date}>
       <span className="big">{two(now.getHours())}</span>
       <span className="big">{two(now.getMinutes())}</span>
-      <span className="dim">{now.toLocaleDateString("tr-TR", { day: "numeric", month: "short" })}</span>
+      {showDate && <span className="dim">{now.toLocaleDateString("tr-TR", { day: "numeric", month: "short" })}</span>}
     </div>
   );
 }

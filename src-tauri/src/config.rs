@@ -190,6 +190,8 @@ pub struct Config {
     pub dock_autohide: bool,
     /// App icons lift and grow under the pointer; missing means on.
     pub hover_lift: Option<bool>,
+    /// The clock widget shows the date next to the time; missing means yes.
+    pub clock_date: Option<bool>,
     /// Thickness of the divider lines on the dock in px (1..=6); missing means 1.
     pub divider_width: Option<f64>,
     /// App icon size in px (20..=44, missing = 30) and the gap between icons (0..=16, missing = 6).

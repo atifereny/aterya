@@ -2,7 +2,7 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { listen } from "@tauri-apps/api/event";
 import { StartIcon, START_ICONS } from "../lib/StartIcon";
-import { autostartGet, autostartSet, backupExport, backupImport, setAutoUpdate, updateCheck, updateInstall, updateState, type UpdateInfo, setAutohide, setDockEdge, setHoverLift, setDividerWidth, setIcons, setLook, demo, monitorsList, setMonitorOrder, setDock, type MonitorInfo, requestState, setIndicator, setStartIcon, floatClose, floatOpen, floatPin, quitApp, setBrightnessLayout, setWidgetScale, restartApp, setBringKey, setBringToMain, setLayout, setTheme, useSettings, type FloatCfg, type LayoutCfg, type Settings as Cfg, type ThemeCfg, type WidgetId } from "../lib/ipc";
+import { autostartGet, autostartSet, backupExport, backupImport, setAutoUpdate, updateCheck, updateInstall, updateState, type UpdateInfo, setAutohide, setClockDate, setDockEdge, setHoverLift, setDividerWidth, setIcons, setLook, demo, monitorsList, setMonitorOrder, setDock, type MonitorInfo, requestState, setIndicator, setStartIcon, floatClose, floatOpen, floatPin, quitApp, setBrightnessLayout, setWidgetScale, restartApp, setBringKey, setBringToMain, setLayout, setTheme, useSettings, type FloatCfg, type LayoutCfg, type Settings as Cfg, type ThemeCfg, type WidgetId } from "../lib/ipc";
 import { WIDGET_INFO } from "../lib/widgets";
 import { CalendarTab } from "./CalendarTab";
 import { Zoom } from "../lib/Zoom";
@@ -234,7 +234,7 @@ function Order({ layout, floating, layout_scales, dividerWidth }: { layout: Layo
   );
 }
 
-function Catalog({ layout, floating, goDesktop, scales, brightnessLayout }: { layout: LayoutCfg; floating: FloatCfg[]; goDesktop: () => void; scales: Cfg["scales"]; brightnessLayout: Cfg["brightnessLayout"] }) {
+function Catalog({ layout, floating, goDesktop, scales, brightnessLayout, clockDate }: { layout: LayoutCfg; floating: FloatCfg[]; goDesktop: () => void; scales: Cfg["scales"]; brightnessLayout: Cfg["brightnessLayout"]; clockDate: boolean }) {
   // On means "somewhere on screen": a newly enabled widget goes to the desktop, and "Çubuğa ekle" moves it into the dock.
   const toggle = async (id: WidgetId, on: boolean) => {
     const floats = floating.some((f) => f.id === id);
@@ -295,6 +295,17 @@ function Catalog({ layout, floating, goDesktop, scales, brightnessLayout }: { la
                             Sıfırla
                           </button>
                         )}
+                      </div>
+                    )}
+                    {id === "clock" && (
+                      <div className="sizer">
+                        <span>Tarih</span>
+                        <button className={clockDate ? "keybtn rec" : "keybtn"} onClick={() => void setClockDate(true)}>
+                          Göster
+                        </button>
+                        <button className={clockDate ? "keybtn" : "keybtn rec"} onClick={() => void setClockDate(false)}>
+                          Gizle
+                        </button>
                       </div>
                     )}
                     {id === "brightness" && (
@@ -959,7 +970,7 @@ export function Settings() {
           </button>
         </div>
       </nav>
-      <main>{tab === "widgets" ? <Catalog layout={s.layout} floating={s.floating} goDesktop={() => setTab("desktop")} scales={s.scales} brightnessLayout={s.brightnessLayout} /> : tab === "order" ? <Order layout={s.layout} floating={s.floating} layout_scales={s.scales} dividerWidth={s.dividerWidth} /> : tab === "dock" ? <DockTab s={s} /> : tab === "desktop" ? <Desktop floating={s.floating} /> : tab === "calendar" ? <CalendarTab /> : tab === "design" ? <Design theme={s.theme} startIcon={s.startIcon} look={look} setLook={setLook} s={s} /> : <Behavior bringToMain={s.bringToMain} bringKey={s.bringKey} indicator={s.indicator} hoverLift={s.hoverLift} s={s} />}</main>
+      <main>{tab === "widgets" ? <Catalog layout={s.layout} floating={s.floating} goDesktop={() => setTab("desktop")} scales={s.scales} brightnessLayout={s.brightnessLayout} clockDate={s.clockDate} /> : tab === "order" ? <Order layout={s.layout} floating={s.floating} layout_scales={s.scales} dividerWidth={s.dividerWidth} /> : tab === "dock" ? <DockTab s={s} /> : tab === "desktop" ? <Desktop floating={s.floating} /> : tab === "calendar" ? <CalendarTab /> : tab === "design" ? <Design theme={s.theme} startIcon={s.startIcon} look={look} setLook={setLook} s={s} /> : <Behavior bringToMain={s.bringToMain} bringKey={s.bringKey} indicator={s.indicator} hoverLift={s.hoverLift} s={s} />}</main>
       </div>
     </div>
   );

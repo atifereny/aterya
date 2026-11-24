@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { formatClock, msUntilNextMinute } from "../lib/clock";
-import { openNotifications } from "../lib/ipc";
+import { openNotifications, useSettings } from "../lib/ipc";
 
 /** The current time, refreshed on every minute change. */
 export function useNow(): Date {
@@ -21,10 +21,11 @@ export function useNow(): Date {
 export function Clock() {
   const now = useNow();
   const { time, date } = formatClock(now);
+  const showDate = useSettings()?.clockDate ?? true;
   return (
     <div className="tile clock" onClick={() => void openNotifications()}>
       <span className="big">{time}</span>
-      <span className="dim">{date}</span>
+      {showDate && <span className="dim">{date}</span>}
     </div>
   );
 }
