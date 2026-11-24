@@ -20,6 +20,7 @@ mod claude_usage;
 mod media;
 #[allow(dead_code)]
 mod system;
+mod bluetooth;
 mod mixer;
 mod screentime;
 mod langpop;
@@ -170,6 +171,7 @@ pub fn run() {
                 // Off the setup thread (building windows from the main thread's own closure deadlocks).
                 std::thread::sleep(std::time::Duration::from_secs(3));
                 mixer::warm(&h);
+                bluetooth::warm(&h);
                 tip::warm(&h);
                 langpop::warm(&h);
             });
@@ -192,7 +194,7 @@ pub fn run() {
             settings::get_settings, settings::set_layout, settings::set_theme,
             settings::set_bring_to_main, settings::set_widget_scale, settings::set_indicator, settings::set_start_icon, mic::mic_get, mic::mic_toggle, mic::bin_get, mic::bin_open, mic::bin_empty, notes::notes_count, notes::note_get, notes::note_new, notes::note_set, notes::note_flags, notes::note_delete, tip::tip_show, tip::tip_ready, tip::tip_hide, settings::set_dock, settings::set_autohide, settings::set_dock_edge, settings::set_hover_lift, settings::set_divider_width, settings::set_icons, shell::set_monitor_order, settings::set_auto_update, update::update_state, update::update_check, update::update_install, backup::backup_export, backup::backup_import, settings::set_look, clip::clip_count, clip::clip_clear, settings::autostart_get, settings::autostart_set, shell::monitors_list, settings::set_brightness_layout,
             settings::set_bring_key, settings::restart_app, settings::quit_app, settings::open_settings,
-            mixer::mixer_list, mixer::mixer_set_volume, mixer::mixer_set_mute, mixer::mixer_toggle, mixer::mixer_fit
+            bluetooth::bt_get, bluetooth::bt_set_power, bluetooth::bt_set_pref, bluetooth::bt_toggle, bluetooth::bt_fit, mixer::mixer_list, mixer::mixer_set_volume, mixer::mixer_set_mute, mixer::mixer_toggle, mixer::mixer_fit
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

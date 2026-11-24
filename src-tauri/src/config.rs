@@ -37,7 +37,7 @@ impl Default for PollCfg {
 }
 
 /// Widgets the dock can show, in default order. Start button and app row are fixed.
-pub const WIDGETS: [&str; 25] = ["apps", "nowplaying", "weather", "claude", "batteries", "tray", "system", "clock", "screentime", "topcpu", "topram", "brightness", "notifications", "showdesktop", "batteryring", "cpuring", "gpuring", "memory", "storage", "netspeed", "keyboardlang", "microphone", "recyclebin", "stickynotes", "clipboard"];
+pub const WIDGETS: [&str; 26] = ["apps", "nowplaying", "weather", "claude", "batteries", "tray", "system", "clock", "screentime", "topcpu", "topram", "brightness", "notifications", "showdesktop", "batteryring", "cpuring", "gpuring", "memory", "storage", "netspeed", "keyboardlang", "microphone", "recyclebin", "stickynotes", "clipboard", "bluetooth"];
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
@@ -116,6 +116,20 @@ pub struct FloatCfg {
     pub pinned: bool,
 }
 
+/// What the user chose for one Bluetooth device: shown on the dock or not, and its icon key (empty: guessed).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct BtPref {
+    pub show: bool,
+    pub icon: String,
+}
+
+impl Default for BtPref {
+    fn default() -> Self {
+        Self { show: true, icon: String::new() }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Config {
@@ -126,6 +140,8 @@ pub struct Config {
     /// Modifier that must be held for that: "always" or one of KEYS.
     pub bring_key: String,
     pub floating: Vec<FloatCfg>,
+    /// Bluetooth devices by name: shown on the dock or not, and the chosen icon.
+    pub bt_prefs: std::collections::HashMap<String, BtPref>,
     /// Per-widget size factor (0.6..=3.0), missing means 1.
     pub scales: std::collections::HashMap<String, f64>,
     /// Brightness widget: "row" (side by side) or "column" (stacked).

@@ -41,6 +41,7 @@ windows = { version = "0.62", features = [
   "Media_Control", "Storage_Streams", "Foundation",
   "Win32_Media_Audio", "Win32_Media_Audio_Endpoints", "Win32_Devices_FunctionDiscovery",
   "Win32_Networking_NetworkListManager", "Networking_Connectivity",
+  "Win32_Devices_DeviceAndDriverInstallation", "Win32_Devices_Properties", "Devices_Radios", "Foundation_Collections",
 ] }
 
 

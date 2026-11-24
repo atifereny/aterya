@@ -57,6 +57,7 @@ export const EVENTS = {
   weather: "weather://changed",
   claude: "claude://changed",
   battery: "battery://changed",
+  btOpen: "bt://open",
   system: "system://changed",
   visibility: "dock://visibility",
   trayFlyout: "tray://flyout", // payload: boolean, overflow flyout open
@@ -159,7 +160,26 @@ export const mixerToggle = (iconCx: number, rows: number, wasOpen: boolean) =>
   invoke<void>("mixer_toggle", { iconCx, rows, wasOpen });
 export const mixerFit = (rows: number) => invoke<void>("mixer_fit", { rows });
 
-export type WidgetId = "apps" | "nowplaying" | "weather" | "claude" | "batteries" | "tray" | "system" | "clock" | "screentime" | "topcpu" | "topram" | "brightness" | "notifications" | "showdesktop" | "batteryring" | "cpuring" | "gpuring" | "memory" | "storage" | "netspeed" | "keyboardlang" | "microphone" | "recyclebin" | "stickynotes" | "clipboard";
+export interface BtDevice {
+  id: string;
+  name: string;
+  connected: boolean;
+  battery: number | null;
+  show: boolean;
+  icon: string;
+}
+export interface BtState {
+  available: boolean;
+  on: boolean;
+  devices: BtDevice[];
+}
+export const btGet = () => invoke<BtState>("bt_get");
+export const btSetPower = (on: boolean) => invoke<void>("bt_set_power", { on });
+export const btSetPref = (id: string, show: boolean, icon: string) => invoke<void>("bt_set_pref", { id, show, icon });
+export const btToggle = (iconCx: number, height: number, wasOpen: boolean) => invoke<void>("bt_toggle", { iconCx, height, wasOpen });
+export const btFit = (height: number) => invoke<void>("bt_fit", { height });
+
+export type WidgetId = "apps" | "nowplaying" | "weather" | "claude" | "batteries" | "tray" | "system" | "clock" | "screentime" | "topcpu" | "topram" | "brightness" | "notifications" | "showdesktop" | "batteryring" | "cpuring" | "gpuring" | "memory" | "storage" | "netspeed" | "keyboardlang" | "microphone" | "recyclebin" | "stickynotes" | "clipboard" | "bluetooth";
 export interface LayoutCfg {
   order: WidgetId[];
   hidden: WidgetId[];
