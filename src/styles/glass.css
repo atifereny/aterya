@@ -540,3 +540,5 @@ html[data-edge="right"] .dots { left: auto; right: -6px; }
 .cal-in.cal-time { width: 84px; padding: 6px 6px; color-scheme: dark; }
 .cal-chk { display: flex; align-items: center; gap: 6px; font-size: 12px; white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) { .cal-ic.spin svg { animation: none; } }
+.cal-add .cal-sw { width: 20px; height: 20px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; flex: none; }
+.cal-add .cal-sw.on { border-color: #fff; box-shadow: 0 0 0 2px rgba(0, 0, 0, 0.4); }

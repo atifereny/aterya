@@ -194,3 +194,6 @@ html:has(.st-shell), html:has(.st-shell) body, html:has(.st-shell) #root { backg
 .st .cal-colors .grow { flex: 1; }
 .st .cal-ferr { color: #f87171; font-size: 12.5px; }
 .st .keybtn:disabled { opacity: 0.45; cursor: default; }
+.st .cal-pick { width: 26px; height: 26px; padding: 0; border: 1px solid var(--line); border-radius: 50%; background: none; cursor: pointer; overflow: hidden; }
+.st .cal-pick::-webkit-color-swatch-wrapper { padding: 0; }
+.st .cal-pick::-webkit-color-swatch { border: 0; border-radius: 50%; }

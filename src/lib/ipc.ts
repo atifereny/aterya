@@ -208,6 +208,9 @@ export const calSourceAdd = (name: string, url: string, color: string) => invoke
 export const calSourceRemove = (id: string) => invoke<void>("cal_source_remove", { id });
 export const calEventAdd = (title: string, start: number, end: number, allDay: boolean, color: string) =>
   invoke<void>("cal_event_add", { title, start, end, allDay, color });
+export const calSourceUpdate = (id: string, name: string, color: string) => invoke<void>("cal_source_update", { id, name, color });
+export const calEventUpdate = (id: string, title: string, start: number, end: number, allDay: boolean, color: string) =>
+  invoke<void>("cal_event_update", { id, title, start, end, allDay, color });
 export const calEventDelete = (id: string) => invoke<void>("cal_event_delete", { id });
 export const calToggle = (iconCx: number) => invoke<void>("cal_toggle", { iconCx });
 export const calFit = (height: number) => invoke<void>("cal_fit", { height });

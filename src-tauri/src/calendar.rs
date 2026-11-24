@@ -405,6 +405,42 @@ pub async fn cal_event_add(app: AppHandle, title: String, start: i64, end: i64, 
     Ok(())
 }
 
+/// Rename a calendar or change its color.
+#[tauri::command]
+pub async fn cal_source_update(app: AppHandle, id: String, name: String, color: String) -> Result<(), String> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("Takvime bir ad ver".into());
+    }
+    let mut c = current()?;
+    let s = c.cal_sources.iter_mut().find(|s| s.id == id).ok_or("Takvim bulunamadı")?;
+    s.name = name;
+    if color_ok(&color) {
+        s.color = color;
+    }
+    save_and_emit(&app, &c)?;
+    let _ = app.emit("cal://changed", ());
+    Ok(())
+}
+
+/// Change one of the user's own events.
+#[tauri::command]
+pub async fn cal_event_update(app: AppHandle, id: String, title: String, start: i64, end: i64, all_day: bool, color: String) -> Result<(), String> {
+    let title = title.trim().to_string();
+    if title.is_empty() {
+        return Err("Etkinliğe bir ad ver".into());
+    }
+    let mut c = current()?;
+    let e = c.cal_local.iter_mut().find(|e| e.id == id).ok_or("Etkinlik bulunamadı")?;
+    (e.title, e.start, e.end, e.all_day) = (title, start, end.max(start), all_day);
+    if color_ok(&color) {
+        e.color = color;
+    }
+    save_and_emit(&app, &c)?;
+    let _ = app.emit("cal://changed", ());
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn cal_event_delete(app: AppHandle, id: String) -> Result<(), String> {
     let mut c = current()?;
