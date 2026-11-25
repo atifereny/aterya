@@ -16,7 +16,7 @@ use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::Shell::{ABN_FULLSCREENAPP, ABN_POSCHANGED};
 use windows::Win32::UI::WindowsAndMessaging::{
     RegisterWindowMessageW, SetWindowPos, ShowWindow, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, SW_HIDE, SW_SHOWNA,
-    WM_DISPLAYCHANGE, WM_DPICHANGED, WM_ENDSESSION,
+    WM_DISPLAYCHANGE, WM_DPICHANGED,
 };
 
 /// Payload: whether DWM blur is live (false: paint the solid pill).
@@ -304,6 +304,7 @@ pub fn setup(app: &tauri::AppHandle) -> tauri::Result<()> {
     let hwnd = win.hwnd()?;
     let _ = APP.set(app.clone());
     TASKBAR_CREATED.store(unsafe { RegisterWindowMessageW(w!("TaskbarCreated")) }, Ordering::SeqCst);
+    shutdown_early();
     taskbar::spawn_guardian(); // first, so a crash from here on still gets the taskbar back
     taskbar::restore_all(); // undo a previous run that died with no guardian
     taskbar::hide_all();
@@ -347,7 +348,6 @@ pub(crate) fn on_message(hwnd: HWND, msg: u32, wp: WPARAM, _lp: LPARAM) {
         m if m == appbar::CALLBACK && wp.0 as u32 == ABN_POSCHANGED => place(hwnd),
         m if m == appbar::CALLBACK && wp.0 as u32 == ABN_FULLSCREENAPP => fullscreen::check(),
         WM_DPICHANGED | WM_DISPLAYCHANGE => place(hwnd),
-        WM_ENDSESSION if wp.0 != 0 => teardown_bounded(),
         m if m != 0 && m == TASKBAR_CREATED.load(Ordering::SeqCst) => {
             log::info!("[shell] TaskbarCreated: explorer restarted, hiding again");
             taskbar::hide_all();
@@ -403,14 +403,86 @@ pub fn teardown() {
 }
 
 /// `teardown` for the end of a Windows session. Explorer may already be gone or stuck, and the calls
-/// into it block; Windows then waits on this process and lists it (and every WebView2 child) as
-/// "preventing shutdown". Give it a second at most.
+/// into it block; Windows then waits on this process and lists it as "preventing shutdown". Give it a second at most.
 fn teardown_bounded() {
     let t = std::thread::spawn(teardown);
     let end = std::time::Instant::now() + std::time::Duration::from_millis(1000);
     while !t.is_finished() && std::time::Instant::now() < end {
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
+}
+
+/// The WebView2 processes of this app: the browser process it started and everything below that (renderer, gpu,
+/// utility). Not other children of this process, such as the new version an update has just started.
+fn webview_processes() -> Vec<u32> {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Diagnostics::ToolHelp::{CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS};
+    let mut all: Vec<(u32, u32, String)> = Vec::new(); // (pid, parent, exe name)
+    unsafe {
+        let Ok(snap) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else { return vec![] };
+        let mut e = PROCESSENTRY32W { dwSize: size_of::<PROCESSENTRY32W>() as u32, ..Default::default() };
+        let mut ok = Process32FirstW(snap, &mut e).is_ok();
+        while ok {
+            let n = e.szExeFile.iter().position(|&c| c == 0).unwrap_or(e.szExeFile.len());
+            all.push((e.th32ProcessID, e.th32ParentProcessID, String::from_utf16_lossy(&e.szExeFile[..n]).to_lowercase()));
+            ok = Process32NextW(snap, &mut e).is_ok();
+        }
+        let _ = CloseHandle(snap);
+    }
+    let me = std::process::id();
+    let mut out: Vec<u32> = all.iter().filter(|(_, par, name)| *par == me && name == "msedgewebview2.exe").map(|(p, _, _)| *p).collect();
+    let mut i = 0;
+    while i < out.len() {
+        let parent = out[i];
+        let found: Vec<u32> = all.iter().filter(|(p, par, _)| *par == parent && !out.contains(p)).map(|(p, _, _)| *p).collect();
+        out.extend(found);
+        i += 1;
+    }
+    out
+}
+
+/// Stop this app's WebView2 processes. Left to themselves they notice the host's exit late, and Windows then lists
+/// them (and this app) as "preventing shutdown".
+fn stop_webviews() -> usize {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Threading::{OpenProcess, TerminateProcess, PROCESS_TERMINATE};
+    let kids = webview_processes();
+    for pid in &kids {
+        unsafe {
+            if let Ok(h) = OpenProcess(PROCESS_TERMINATE, false, *pid) {
+                let _ = TerminateProcess(h, 0);
+                let _ = CloseHandle(h);
+            }
+        }
+    }
+    kids.len()
+}
+
+/// The Windows session is ending (this window got WM_ENDSESSION first): give the taskbar back and stop WebView2.
+pub(crate) fn end_session() {
+    log::info!("[shell] session ending");
+    teardown_bounded();
+    let n = stop_webviews();
+    log::info!("[shell] session ending: stopped {n} WebView2 process(es)");
+    log::logger().flush();
+}
+
+unsafe extern "C" {
+    fn atexit(f: extern "C" fn()) -> i32;
+}
+
+/// At every exit of the process, whichever window or thread causes it (tao answers WM_ENDSESSION with
+/// `process::exit` from its own hidden window, bypassing everything else).
+extern "C" fn at_exit() {
+    stop_webviews();
+}
+
+/// Be among the first to be closed at logoff, and never make Windows wait on a retry dialog for this process.
+pub(crate) fn shutdown_early() {
+    use windows::Win32::System::Threading::SetProcessShutdownParameters;
+    const SHUTDOWN_NORETRY: u32 = 1;
+    let _ = unsafe { SetProcessShutdownParameters(0x4FF, SHUTDOWN_NORETRY) };
+    unsafe { atexit(at_exit) };
 }
 
 #[cfg(test)]

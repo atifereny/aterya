@@ -17,7 +17,7 @@ use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::Shell::{DefSubclassProc, SetWindowSubclass};
 use windows::Win32::UI::WindowsAndMessaging::{
     GetWindowLongPtrW, SetWindowLongPtrW, SetWindowPos, GWL_STYLE, MA_NOACTIVATE, STYLESTRUCT,
-    SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, WINDOW_STYLE, WM_MOUSEACTIVATE,
+    SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER, WINDOW_STYLE, WM_ENDSESSION, WM_MOUSEACTIVATE,
     WM_NCACTIVATE, WM_SETTINGCHANGE, WM_STYLECHANGING, WS_CAPTION, WS_MAXIMIZEBOX, WS_MINIMIZEBOX,
     WS_SYSMENU,
 };
@@ -32,6 +32,9 @@ unsafe extern "system" fn subclass(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM,
             let ss = unsafe { &mut *(lp.0 as *mut STYLESTRUCT) };
             ss.styleNew &= !CAPTION_BITS.0;
         }
+        // End of the Windows session: tao answers this by exiting the process from inside DefWindowProc, so
+        // anything that has to happen first (taskbar back, WebView2 children stopped) must happen before it.
+        WM_ENDSESSION if wp.0 != 0 => super::end_session(),
         // A taskbar must never take focus from the app the user is in (WS_EX_NOACTIVATE comes from
         // `focusable: false` in tauri.conf.json; this covers clicks routed through the webview).
         WM_MOUSEACTIVATE => return LRESULT(MA_NOACTIVATE as isize),

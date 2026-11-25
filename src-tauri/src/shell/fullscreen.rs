@@ -2,17 +2,29 @@
 use windows::Win32::Foundation::{HWND, POINT, RECT};
 use windows::Win32::Graphics::Gdi::{MonitorFromPoint, MonitorFromWindow, MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTOPRIMARY};
 use windows::Win32::UI::Accessibility::{SetWinEventHook, HWINEVENTHOOK};
-use windows::Win32::UI::Shell::{SHQueryUserNotificationState, QUNS_PRESENTATION_MODE, QUNS_RUNNING_D3D_FULL_SCREEN};
+use windows::Win32::UI::Shell::SHQueryUserNotificationState;
 use windows::Win32::UI::WindowsAndMessaging::{
     GetAncestor, GetClassNameW, GetForegroundWindow, GetShellWindow, GetWindowRect, IsIconic, IsZoomed, EVENT_SYSTEM_FOREGROUND,
     GA_ROOT, WINEVENT_OUTOFCONTEXT, WINEVENT_SKIPOWNPROCESS,
 };
 
 /// Foreground windows that are the shell itself, never a fullscreen app (desktop, taskbars, Task View / Alt+Tab).
-const SHELL_CLASSES: [&str; 7] = [
+const SHELL_CLASSES: [&str; 8] = [
     "Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd", "XamlExplorerHostIslandWindow",
     "TopLevelWindowForOverflowXamlIsland", "Xaml_WindowedPopupClass", // the hidden-icons flyout and its popups
+    "Windows.UI.Core.CoreWindow", // Start, Search, widgets: shell hosts that can span the whole monitor (see `fullscreen_state`)
 ];
+
+/// What Windows says about the user's state (SHQueryUserNotificationState) as a fullscreen verdict. A window that
+/// merely covers the monitor is not enough: shell hosts and maximized windows do too. Windows reports BUSY (2) or
+/// APP (7) only when something really is fullscreen, and ACCEPTS_NOTIFICATIONS (5) otherwise.
+pub fn fullscreen_state(covers: bool, quns: i32) -> bool {
+    match quns {
+        3 | 4 => true,      // D3D exclusive, presentation mode: true even when the window rect is odd
+        2 | 7 => covers,    // busy, or a fullscreen store app: it must be the window on this monitor
+        _ => false,
+    }
+}
 
 /// True when `win` covers all of `mon` (borderless games often overhang by a few px).
 pub fn covers_monitor(win: RECT, mon: RECT) -> bool {
@@ -43,7 +55,7 @@ fn is_fullscreen(fg: HWND) -> bool {
     let exact = rc.left == mon.left && rc.top == mon.top && rc.right == mon.right && rc.bottom == mon.bottom;
     let framed_max = unsafe { IsZoomed(fg) }.as_bool() && !exact;
     let covers = got && covers_monitor(rc, mon) && !framed_max;
-    let full = covers || quns == QUNS_RUNNING_D3D_FULL_SCREEN || quns == QUNS_PRESENTATION_MODE;
+    let full = fullscreen_state(covers, quns.0);
     if full && super::is_visible() {
         log::info!("[fullscreen] hiding for class={} rect={},{},{},{} quns={}", String::from_utf16_lossy(&buf[..n]), rc.left, rc.top, rc.right, rc.bottom, quns.0);
     }
@@ -71,12 +83,10 @@ pub fn start() {
     if hook.is_invalid() {
         log::error!("[fullscreen] SetWinEventHook failed; dock will stay visible over fullscreen apps");
     }
-    // A hide that outlives its fullscreen app (a missed foreground event) heals itself within a second.
+    // A missed foreground event, or Windows updating its notification state a moment late, heals within a second.
     std::thread::spawn(|| loop {
         std::thread::sleep(std::time::Duration::from_secs(1));
-        if !super::is_visible() {
-            check();
-        }
+        check();
     });
 }
 
@@ -86,6 +96,16 @@ mod tests {
     use windows::Win32::Foundation::RECT;
 
     const MON: RECT = RECT { left: 0, top: 0, right: 2560, bottom: 1440 };
+
+    #[test]
+    fn notification_state_decides() {
+        use super::fullscreen_state as f;
+        assert!(!f(true, 5), "a shell host covering the monitor while Windows accepts notifications");
+        assert!(!f(true, 6));
+        assert!(f(true, 2), "a fullscreen video or borderless game");
+        assert!(!f(false, 2), "busy because of a window on another monitor");
+        assert!(f(false, 3) && f(false, 4), "d3d exclusive and presentation mode");
+    }
 
     #[test]
     fn equal_rects_cover() {
