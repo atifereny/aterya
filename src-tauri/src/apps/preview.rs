@@ -71,6 +71,8 @@ struct Item {
     minimized: bool,
     x: i32,
     y: i32,
+    /// Last picture of a minimized window (`data:` URL), when one was taken.
+    snap: Option<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -238,11 +240,17 @@ fn show(app: &AppHandle, group: &str, icon_cx: f64) -> Result<(), String> {
             let hw = HWND(h as *mut _);
             let mut buf = [0u16; 256];
             let n = unsafe { GetWindowTextW(hw, &mut buf) };
-            Item { hwnd: h.to_string(), title: String::from_utf16_lossy(&buf[..n as usize]), minimized: unsafe { IsIconic(hw).as_bool() }, x: cx, y: cy }
+            let minimized = unsafe { IsIconic(hw).as_bool() };
+            Item { hwnd: h.to_string(), title: String::from_utf16_lossy(&buf[..n as usize]), minimized, snap: if minimized { super::snap::get(h) } else { None }, x: cx, y: cy }
         })
         .collect();
     let payload = Payload { items: items.clone(), icon: tracker::icon_of(group), thumb_w: THUMB.0, thumb_h: THUMB.1, title_h: TITLE_H };
 
+    // Windows on screen: keep their last picture fresh while someone looks at them.
+    for (it, &src) in items.iter().zip(&live).filter(|(it, _)| !it.minimized) {
+        let _ = it;
+        super::snap::capture_soon(src, false);
+    }
     let mut pv = pv();
     unregister(&mut pv);
     (pv.shown, pv.group, pv.icon_cx, pv.windows) = (true, group.to_string(), icon_cx, live.clone());

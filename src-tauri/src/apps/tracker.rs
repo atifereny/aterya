@@ -288,8 +288,18 @@ unsafe extern "system" fn on_event(_: HWINEVENTHOOK, event: u32, hwnd: HWND, id_
         if !root.0.is_null() && root != hwnd {
             return; // child windows, tooltips etc. never get a button
         }
+        // A window that starts to minimize is still on screen: take its last picture now.
+        if event == 0x0016 && !hwnd.0.is_null() {
+            super::snap::capture_soon(hwnd.0 as isize, true);
+        }
         if event == EVENT_SYSTEM_FOREGROUND && !root.0.is_null() {
             let root = root.0 as isize;
+            // The window that just lost the foreground: its picture is kept up to date.
+            if let Some(&prev) = RECENT.lock().unwrap().first() {
+                if prev != root {
+                    super::snap::capture_soon(prev, false);
+                }
+            }
             let mut r = RECENT.lock().unwrap();
             r.retain(|&w| w != root);
             r.insert(0, root);

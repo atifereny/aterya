@@ -4,5 +4,6 @@ pub mod icons;
 pub mod pins;
 pub mod taskbar_pins;
 pub mod preview;
+pub mod snap;
 pub mod recent;
 pub mod tracker;

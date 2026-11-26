@@ -14,15 +14,27 @@ export function Preview() {
   return (
     <div className="pv" onMouseEnter={() => void previewEnter()} onMouseLeave={() => void previewLeave()}>
       {p.items.map((it) => (
-        <div key={it.hwnd} className="pv-cell" style={{ left: it.x, top: it.y, width: p.thumbW, height: p.titleH + p.thumbH }} onClick={() => void activateWindow(it.hwnd)}>
+        <div
+          key={it.hwnd}
+          className="pv-cell"
+          style={{ left: it.x, top: it.y, width: p.thumbW, height: p.titleH + p.thumbH }}
+          onClick={() => void activateWindow(it.hwnd)}
+          onMouseDown={(e) => e.button === 1 && e.preventDefault()} // no autoscroll cursor on a middle click
+          onAuxClick={(e) => {
+            // Middle button closes the window, like on a browser tab.
+            if (e.button !== 1) return;
+            e.preventDefault();
+            void closeWindow(it.hwnd);
+          }}
+        >
           <div className="pv-title" style={{ height: p.titleH }}>
             <span title={it.title}>{it.title || "(untitled)"}</span>
             <button aria-label="Close window" onClick={(e) => { e.stopPropagation(); void closeWindow(it.hwnd); }}>✕</button>
           </div>
           {it.minimized && (
+            // A minimized window cannot be drawn live: its last picture, or its icon if none was taken yet.
             <div className="pv-min" style={{ height: p.thumbH }}>
-              {p.icon && <img src={p.icon} width={48} height={48} alt="" draggable={false} />}
-              <span>Minimized</span>
+              {it.snap ? <img className="pv-snap" src={it.snap} alt="" draggable={false} /> : p.icon && <img src={p.icon} width={48} height={48} alt="" draggable={false} />}
             </div>
           )}
         </div>

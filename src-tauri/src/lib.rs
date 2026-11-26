@@ -147,6 +147,7 @@ pub fn run() {
             tauri::Manager::manage(app, hub);
             let cfg = config::Config::load(&config::config_path());
             apps::tracker::start(app.handle().clone(), apps::pins::effective());
+            apps::snap::start();
             apps::pins::watch();
             battery::logitech::start(app.handle().clone(), cfg.poll_minutes.battery);
             weather::start(app.handle().clone(), cfg.weather, cfg.poll_minutes.weather);

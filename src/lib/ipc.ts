@@ -130,6 +130,7 @@ export interface PreviewItem {
   hwnd: string;
   title: string;
   minimized: boolean;
+  snap?: string | null;
   x: number;
   y: number;
 }
