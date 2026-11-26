@@ -1,6 +1,6 @@
 [package]
 name = "custom_taskbar"
-version = "0.1.6"
+version = "0.1.7"
 description = "Aterya"
 authors = ["you"]
 edition = "2024"
