@@ -264,7 +264,7 @@ export const setIcons = (size: number, gap: number) => invoke<void>("set_icons",
 export const setDividerWidth = (value: number) => invoke<void>("set_divider_width", { value });
 export const setHoverLift = (on: boolean) => invoke<void>("set_hover_lift", { on });
 export const setAutohide = (on: boolean) => invoke<void>("set_autohide", { on });
-export type MonitorInfo = { device: string; x: number; y: number; width: number; height: number; primary: boolean; num: number };
+export type MonitorInfo = { device: string; id: string; x: number; y: number; width: number; height: number; primary: boolean; num: number };
 export const setMonitorOrder = (order: string[]) => invoke<void>("set_monitor_order", { order });
 export const monitorsList = () => invoke<MonitorInfo[]>("monitors_list");
 export const setDock = (monitor: string, scale: number, gap: number) => invoke<void>("set_dock", { monitor, scale, gap });

@@ -61,6 +61,16 @@ fn find_flyout() -> Option<windows::Win32::Foundation::HWND> {
     (found != 0).then(|| HWND(found as *mut _))
 }
 
+/// The overflow flyout's top-level window by its class: a lookup in the kernel's window list instead of walking
+/// every window, so the poll that moves the flyout reacts within a millisecond. `visible_only` false also finds it
+/// while it is hidden between uses.
+fn flyout_window(visible_only: bool) -> Option<windows::Win32::Foundation::HWND> {
+    use windows::core::w;
+    use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, IsWindowVisible};
+    let h = unsafe { FindWindowW(w!("TopLevelWindowForOverflowXamlIsland"), None) }.ok()?;
+    (!visible_only || unsafe { IsWindowVisible(h) }.as_bool()).then_some(h)
+}
+
 /// Windows shows a small "show/hide hidden icons" tooltip at the hidden taskbar's chevron
 /// (bottom-right corner), far from the dock. Hide it.
 fn hide_stray_tooltip() {
@@ -94,6 +104,17 @@ fn watch_flyout(app: AppHandle) {
     });
 }
 
+/// Where the flyout belongs: above the chevron at physical (x, y), next to the dock's edge.
+fn flyout_spot(x: i32, y: i32, w: i32, ht: i32) -> (i32, i32) {
+    use windows::Win32::Foundation::RECT;
+    use windows::Win32::UI::WindowsAndMessaging::GetWindowRect;
+    // The page's y is unreliable (window.screenY); the dock window's own rect is exact.
+    let mut dr = RECT::default();
+    let at = if unsafe { GetWindowRect(crate::shell::dock_hwnd(), &mut dr) }.is_ok() { dr } else { RECT { top: y, bottom: y, ..dr } };
+    let along = if crate::shell::vertical() { y } else { x };
+    crate::shell::popup_pos(at, along, (w, ht), 12, 0, crate::shell::primary_monitor())
+}
+
 fn reposition_flyout(app: &AppHandle, x: i32, y: i32) {
     use windows::Win32::Foundation::RECT;
     use windows::Win32::UI::WindowsAndMessaging::*;
@@ -104,22 +125,26 @@ fn reposition_flyout(app: &AppHandle, x: i32, y: i32) {
             hide_stray_tooltip();
         }
     });
-    for _ in 0..700 {
-        // Tight poll: the flyout first appears at the hidden taskbar (bottom-right); move it before it is seen.
-        std::thread::sleep(std::time::Duration::from_millis(4));
-        let Some(h) = find_flyout() else { continue };
+    // Explorer shows the flyout at the hidden taskbar (bottom-right) and only then do we can move it, so every
+    // microsecond between its show and our move is a visible frame there. Spin (no sleeping) at high priority.
+    use windows::Win32::System::Threading::{GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_TIME_CRITICAL, THREAD_PRIORITY_NORMAL};
+    let _ = unsafe { SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL) };
+    let started = std::time::Instant::now();
+    while started.elapsed() < std::time::Duration::from_secs(3) {
+        let Some(h) = flyout_window(true) else {
+            std::thread::yield_now();
+            continue;
+        };
         let mut r = RECT::default();
         if unsafe { GetWindowRect(h, &mut r) }.is_err() { return; }
-        let (w, ht) = (r.right - r.left, r.bottom - r.top);
-        // The page's y is unreliable (window.screenY); the dock window's own top is exact.
-        let mut dr = RECT::default();
-        let at = if unsafe { GetWindowRect(crate::shell::dock_hwnd(), &mut dr) }.is_ok() { dr } else { RECT { top: y, bottom: y, ..dr } };
-        let along = if crate::shell::vertical() { y } else { x };
-        let (fx, fy) = crate::shell::popup_pos(at, along, (w, ht), 12, 0, crate::shell::primary_monitor());
+        let (fx, fy) = flyout_spot(x, y, r.right - r.left, r.bottom - r.top);
         let _ = unsafe { SetWindowPos(h, None, fx, fy, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE) };
+        log::info!("[tray] flyout moved {} ms after the keys", started.elapsed().as_millis());
+        let _ = unsafe { SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_NORMAL) };
         watch_flyout(app.clone());
         return;
     }
+    let _ = unsafe { SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_NORMAL) };
 }
 
 /// Win+B focuses the tray's "Show hidden icons" button; Enter opens the flyout.

@@ -126,7 +126,7 @@ pub(crate) fn popup_pos(dock: RECT, along: i32, (w, h): (i32, i32), gap: i32, ma
     }
 }
 
-/// Device name of the chosen screen; empty means the primary one.
+/// Id (or, from older versions, device name) of the chosen screen; empty means the primary one.
 static CHOSEN: Mutex<String> = Mutex::new(String::new());
 
 pub(crate) fn zoom() -> f64 {
@@ -146,7 +146,11 @@ fn main_window(app: &tauri::AppHandle) -> tauri::Result<WebviewWindow> {
 #[derive(serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct MonitorInfo {
+    /// Windows' name for the screen (`\\.\DISPLAY2`). It changes when Windows renumbers its screens, so nothing is
+    /// saved under it; see `id`.
     pub device: String,
+    /// Stable identity of the screen: its model and the output it is plugged into. Settings are saved under this.
+    pub id: String,
     pub x: i32,
     pub y: i32,
     pub width: i32,
@@ -156,6 +160,29 @@ pub struct MonitorInfo {
     pub num: u32,
 }
 
+/// "DELA0C0-UID256" for a screen: the model code of its EDID and the output's target id. Both survive a reboot and
+/// Windows renumbering its `DISPLAYn` names. Falls back to the device name if Windows will not say.
+fn monitor_id(device: &str) -> String {
+    use windows::core::PCWSTR;
+    use windows::Win32::Graphics::Gdi::{EnumDisplayDevicesW, DISPLAY_DEVICEW};
+    let name: Vec<u16> = device.encode_utf16().chain([0]).collect();
+    let mut dd = DISPLAY_DEVICEW { cb: size_of::<DISPLAY_DEVICEW>() as u32, ..Default::default() };
+    // EDD_GET_DEVICE_INTERFACE_NAME: DeviceID becomes the device interface path, which carries the UID.
+    if !unsafe { EnumDisplayDevicesW(PCWSTR(name.as_ptr()), 0, &mut dd, 1) }.as_bool() {
+        return device.to_string();
+    }
+    let n = dd.DeviceID.iter().position(|&c| c == 0).unwrap_or(dd.DeviceID.len());
+    parse_monitor_path(&String::from_utf16_lossy(&dd.DeviceID[..n])).unwrap_or_else(|| device.to_string())
+}
+
+/// `\\?\DISPLAY#DELA0C0#5&1c6e2f02&0&UID256#{guid}` -> `DELA0C0-UID256`.
+fn parse_monitor_path(path: &str) -> Option<String> {
+    let mut parts = path.trim_start_matches(r"\\?\").split('#');
+    let (_class, model, inst) = (parts.next()?, parts.next()?, parts.next()?);
+    let uid = inst.rsplit('&').next().filter(|u| u.starts_with("UID"))?;
+    (!model.is_empty()).then(|| format!("{model}-{uid}"))
+}
+
 unsafe extern "system" fn collect(h: HMONITOR, _: HDC, _: *mut RECT, out: LPARAM) -> BOOL {
     let v = unsafe { &mut *(out.0 as *mut Vec<MonitorInfo>) };
     let mut mi = MONITORINFOEXW::default();
@@ -163,7 +190,8 @@ unsafe extern "system" fn collect(h: HMONITOR, _: HDC, _: *mut RECT, out: LPARAM
     if unsafe { GetMonitorInfoW(h, &mut mi as *mut _ as *mut MONITORINFO) }.as_bool() {
         let r = mi.monitorInfo.rcMonitor;
         let n = mi.szDevice.iter().position(|&c| c == 0).unwrap_or(mi.szDevice.len());
-        v.push(MonitorInfo { device: String::from_utf16_lossy(&mi.szDevice[..n]), x: r.left, y: r.top, width: r.right - r.left, height: r.bottom - r.top, primary: mi.monitorInfo.dwFlags & 1 != 0, num: 0 });
+        let device = String::from_utf16_lossy(&mi.szDevice[..n]);
+        v.push(MonitorInfo { id: monitor_id(&device), device, x: r.left, y: r.top, width: r.right - r.left, height: r.bottom - r.top, primary: mi.monitorInfo.dwFlags & 1 != 0, num: 0 });
     }
     BOOL(1)
 }
@@ -183,9 +211,11 @@ pub(crate) fn numbered() -> Vec<String> {
     let cfg = crate::config::Config::load(&crate::config::config_path());
     let all = monitors();
     let mut out: Vec<String> = Vec::new();
-    for d in cfg.monitor_order.iter().chain(all.iter().map(|m| &m.device)) {
-        if all.iter().any(|m| &m.device == d) && !out.contains(d) {
-            out.push(d.clone());
+    // The saved list holds ids (older versions saved Windows device names); the rest follow left to right.
+    let saved = cfg.monitor_order.iter().filter_map(|k| all.iter().find(|m| &m.id == k || &m.device == k));
+    for m in saved.chain(all.iter()) {
+        if !out.contains(&m.device) {
+            out.push(m.device.clone());
         }
     }
     out
@@ -202,7 +232,7 @@ pub fn monitors_list() -> Vec<MonitorInfo> {
     v
 }
 
-/// Saves the screen numbering: `order` lists the devices, first is screen 1.
+/// Saves the screen numbering: `order` lists the screen ids, first is screen 1.
 #[tauri::command]
 pub fn set_monitor_order(app: tauri::AppHandle, order: Vec<String>) -> Result<(), String> {
     let mut c = crate::settings::current()?;
@@ -214,7 +244,7 @@ pub fn set_monitor_order(app: tauri::AppHandle, order: Vec<String>) -> Result<()
 pub(crate) fn primary_monitor() -> RECT {
     let chosen = CHOSEN.lock().unwrap_or_else(|e| e.into_inner()).clone();
     if !chosen.is_empty() {
-        if let Some(m) = monitors().into_iter().find(|m| m.device == chosen) {
+        if let Some(m) = monitors().into_iter().find(|m| m.id == chosen || m.device == chosen) {
             return RECT { left: m.x, top: m.y, right: m.x + m.width, bottom: m.y + m.height };
         }
     }
@@ -487,7 +517,26 @@ pub(crate) fn shutdown_early() {
 
 #[cfg(test)]
 mod tests {
-    use super::needs_place;
+    use super::{needs_place, parse_monitor_path};
+
+    /// Real screens, read-only: `cargo test live_monitors -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn live_monitors() {
+        for m in super::monitors() {
+            println!("{} -> {} ({}x{} at {},{})", m.device, m.id, m.width, m.height, m.x, m.y);
+        }
+        println!("numbered: {:?}", super::numbered());
+    }
+
+    #[test]
+    fn monitor_ids_ignore_the_volatile_part() {
+        let a = parse_monitor_path(r"\\?\DISPLAY#DELA0C0#5&1c6e2f02&0&UID256#{e6f07b5f-ee97-4a90-b076-33f57bf4eaa7}");
+        let b = parse_monitor_path(r"\\?\DISPLAY#DELA0C0#4&99aa77&0&UID256#{e6f07b5f-ee97-4a90-b076-33f57bf4eaa7}");
+        assert_eq!(a.as_deref(), Some("DELA0C0-UID256"));
+        assert_eq!(a, b);
+        assert_eq!(parse_monitor_path("garbage"), None);
+    }
     use windows::Win32::Foundation::RECT;
 
     const RC: RECT = RECT { left: 0, top: 1366, right: 2560, bottom: 1440 };

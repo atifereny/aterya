@@ -270,34 +270,100 @@ fn hwinfo() -> Option<Hw> {
     }
 }
 
-/// HWiNFO's free version stops feeding shared memory after 12 hours. The user's elevated scheduled task
-/// `HWiNFOYenile` restarts it; running it needs no elevation. Without that task this does nothing.
-fn restart_hwinfo() {
+/// Why HWiNFO is to be restarted.
+#[derive(Debug, PartialEq, Clone, Copy)]
+enum Why {
+    /// Its shared memory is there but nothing updates it (the free version stops after 12 hours).
+    Stale,
+    /// The program is gone (it crashed, or was closed).
+    NotRunning,
+    /// It runs but never publishes shared memory (a bad start, or Shared Memory Support is off).
+    NoData,
+}
+
+/// What the sensor thread knows about HWiNFO right now.
+struct HwState {
+    /// The shared memory exists.
+    mapped: bool,
+    stale: bool,
+    running: bool,
+    /// How long it has been in this bad state.
+    bad_for: Duration,
+    /// Since the last restart this app asked for.
+    since_restart: Option<Duration>,
+    /// Restarts already tried for `NoData` in this run of the app.
+    no_data_tries: u32,
+}
+
+/// Whether to restart HWiNFO now. A restart closes the program, so it is slow and rare: only after the state has
+/// lasted, at most every 10 minutes, and a program that runs but shares nothing only three times.
+fn restart_reason(s: &HwState) -> Option<Why> {
+    if s.since_restart.is_some_and(|t| t < Duration::from_secs(600)) {
+        return None;
+    }
+    let after = |secs: u64| s.bad_for >= Duration::from_secs(secs);
+    match (s.mapped, s.stale, s.running) {
+        (true, true, _) if after(60) => Some(Why::Stale),
+        (false, _, false) if after(90) => Some(Why::NotRunning),
+        (false, _, true) if after(300) && s.no_data_tries < 3 => Some(Why::NoData),
+        _ => None,
+    }
+}
+
+/// Is HWiNFO64.exe a running process (elevated or not; the process list shows it either way)?
+fn hwinfo_running() -> bool {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Diagnostics::ToolHelp::{CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS};
+    unsafe {
+        let Ok(snap) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else { return true }; // unknown: assume yes, do not restart
+        let mut e = PROCESSENTRY32W { dwSize: size_of::<PROCESSENTRY32W>() as u32, ..Default::default() };
+        let mut found = false;
+        let mut ok = Process32FirstW(snap, &mut e).is_ok();
+        while ok && !found {
+            let n = e.szExeFile.iter().position(|&c| c == 0).unwrap_or(e.szExeFile.len());
+            found = String::from_utf16_lossy(&e.szExeFile[..n]).eq_ignore_ascii_case("hwinfo64.exe");
+            ok = Process32NextW(snap, &mut e).is_ok();
+        }
+        let _ = CloseHandle(snap);
+        found
+    }
+}
+
+/// The user's elevated scheduled task `HWiNFOYenile` closes HWiNFO and starts it again through their own `HWiNFO`
+/// task; running it needs no elevation. Without that task this does nothing.
+fn restart_hwinfo(why: Why) {
     use std::os::windows::process::CommandExt;
     let r = std::process::Command::new("schtasks").args(["/run", "/tn", "HWiNFOYenile"]).creation_flags(0x0800_0000).output();
     match r {
-        Ok(o) if o.status.success() => log::info!("[sensors] HWiNFO stopped feeding data, restart task started"),
-        _ => log::warn!("[sensors] HWiNFO stopped feeding data and the HWiNFOYenile task could not be run"),
+        Ok(o) if o.status.success() => log::info!("[sensors] HWiNFO restart task started ({why:?})"),
+        _ => log::warn!("[sensors] HWiNFO needs a restart ({why:?}) and the HWiNFOYenile task could not be run"),
     }
 }
 
 pub fn start() {
     std::thread::spawn(|| {
-        let mut stale_since: Option<Instant> = None;
+        let mut bad_since: Option<Instant> = None;
         let mut restarted: Option<Instant> = None;
+        let mut no_data_tries = 0u32;
         let (mut cpu_load, nvml) = (CpuLoad(None), Nvml::open());
         let mut net = net_totals().map(|t| (t, Instant::now()));
         loop {
             std::thread::sleep(Duration::from_secs(2));
             let hw = hwinfo();
-            if hw.as_ref().is_some_and(|h| h.stale) {
-                let since = *stale_since.get_or_insert_with(Instant::now);
-                if since.elapsed() >= Duration::from_secs(60) && restarted.is_none_or(|t| t.elapsed() >= Duration::from_secs(600)) {
-                    restarted = Some(Instant::now());
-                    restart_hwinfo();
-                }
+            let stale = hw.as_ref().is_some_and(|h| h.stale);
+            if hw.as_ref().is_some_and(|h| !h.stale) {
+                bad_since = None;
             } else {
-                stale_since = None;
+                let since = *bad_since.get_or_insert_with(Instant::now);
+                let st = HwState { mapped: hw.is_some(), stale, running: hwinfo_running(), bad_for: since.elapsed(), since_restart: restarted.map(|t| t.elapsed()), no_data_tries };
+                if let Some(why) = restart_reason(&st) {
+                    restarted = Some(Instant::now());
+                    bad_since = Some(Instant::now()); // give the new start the full grace time
+                    if why == Why::NoData {
+                        no_data_tries += 1;
+                    }
+                    restart_hwinfo(why);
+                }
             }
             let (gpu, vram) = nvml.as_ref().map(Nvml::read).unwrap_or_default();
             let (mut down, mut up) = (0.0, 0.0);
@@ -367,5 +433,31 @@ mod tests {
         println!("ram {} / {}", ram().used, ram().total);
         println!("net {:?}", net_totals());
         println!("gpu {:?}", Nvml::open().map(|n| { let (c, m) = n.read(); (c.load, c.temp, c.power, m.map(|m| m.used)) }));
+    }
+
+    fn state(mapped: bool, stale: bool, running: bool, bad: u64) -> HwState {
+        HwState { mapped, stale, running, bad_for: Duration::from_secs(bad), since_restart: None, no_data_tries: 0 }
+    }
+
+    #[test]
+    fn restarts_only_after_the_state_has_lasted() {
+        assert_eq!(restart_reason(&state(true, true, true, 59)), None);
+        assert_eq!(restart_reason(&state(true, true, true, 60)), Some(Why::Stale));
+        assert_eq!(restart_reason(&state(false, false, false, 89)), None);
+        assert_eq!(restart_reason(&state(false, false, false, 90)), Some(Why::NotRunning));
+        assert_eq!(restart_reason(&state(false, false, true, 299)), None);
+        assert_eq!(restart_reason(&state(false, false, true, 300)), Some(Why::NoData));
+    }
+
+    #[test]
+    fn restarts_are_rare() {
+        let mut s = state(false, false, false, 500);
+        s.since_restart = Some(Duration::from_secs(599));
+        assert_eq!(restart_reason(&s), None);
+        s.since_restart = Some(Duration::from_secs(600));
+        assert_eq!(restart_reason(&s), Some(Why::NotRunning));
+        let mut n = state(false, false, true, 900);
+        n.no_data_tries = 3;
+        assert_eq!(restart_reason(&n), None, "a program that runs but shares nothing is restarted three times at most");
     }
 }

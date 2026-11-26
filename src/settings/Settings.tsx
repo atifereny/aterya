@@ -401,7 +401,9 @@ function DockTab({ s }: { s: Cfg }) {
     void autostartGet().then(setAuto);
     void monitorsList().then(setMons);
   }, []);
-  const chosen = s.dockMonitor && mons.some((m) => m.device === s.dockMonitor) ? s.dockMonitor : mons.find((m) => m.primary)?.device ?? "";
+  // Saved by id; older versions saved Windows' device name.
+  const isChosen = (m: MonitorInfo) => m.id === s.dockMonitor || m.device === s.dockMonitor;
+  const chosen = mons.find(isChosen)?.id ?? mons.find((m) => m.primary)?.id ?? "";
   // Sliders follow the pointer at once; the change goes to the dock at most every 80 ms.
   const [scale, setScale] = useState(Math.round(s.dockScale * 100));
   const [gap, setGap] = useState(Math.round(s.dockGap));
@@ -461,11 +463,11 @@ function DockTab({ s }: { s: Cfg }) {
       <h3 className="sub-h">Ekran</h3>
       <div className="monpick">
         {mons.map((m) => (
-          <div className="monwrap" key={m.device}>
+          <div className="monwrap" key={m.id}>
           <button
-            className={chosen === m.device ? "mon sel" : "mon"}
+            className={chosen === m.id ? "mon sel" : "mon"}
             onClick={() => {
-              latest.current = { ...latest.current, monitor: m.primary ? "" : m.device };
+              latest.current = { ...latest.current, monitor: m.primary ? "" : m.id };
               send({});
             }}
           >
@@ -485,7 +487,7 @@ function DockTab({ s }: { s: Cfg }) {
                   className={m.num === k + 1 ? "on" : ""}
                   onClick={() => {
                     // The screen holding that number takes this one's old number.
-                    const order = [...mons].sort((a, b) => a.num - b.num).map((x) => x.device);
+                    const order = [...mons].sort((a, b) => a.num - b.num).map((x) => x.id);
                     const from = m.num - 1;
                     [order[from], order[k]] = [order[k], order[from]];
                     void setMonitorOrder(order).then(() => monitorsList().then(setMons));
