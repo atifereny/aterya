@@ -167,6 +167,9 @@ pub struct Config {
     pub bt_prefs: std::collections::HashMap<String, BtPref>,
     /// Calendars subscribed to, and the user's own events.
     pub cal_sources: Vec<CalSource>,
+    /// Devices of the battery widget the user decided on: built-in ids ("mouse", "headset", "keyboard") and
+    /// Bluetooth devices ("bt:<name>"); true = shown. Not listed: built-ins show, Bluetooth devices wait to be asked about.
+    pub bat_prefs: std::collections::HashMap<String, bool>,
     pub cal_local: Vec<LocalEvent>,
     /// Per-widget size factor (0.6..=3.0), missing means 1.
     pub scales: std::collections::HashMap<String, f64>,

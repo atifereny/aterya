@@ -171,6 +171,12 @@ pub fn start(app: AppHandle, poll_minutes: u64) {
     }
 }
 
+/// The devices as last shown: the settings page lists them.
+#[tauri::command]
+pub fn battery_list() -> Vec<DeviceBattery> {
+    SHARED.get().map(|sh| sh.shown.lock().unwrap_or_else(|e| e.into_inner()).clone()).unwrap_or_default()
+}
+
 /// Reads every device right now (in parallel); returns when all have answered or timed out.
 #[tauri::command]
 pub async fn battery_refresh() -> Result<(), String> {

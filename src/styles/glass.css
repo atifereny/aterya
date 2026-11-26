@@ -551,3 +551,14 @@ html[data-edge="right"] .dots { left: auto; right: -6px; }
 .tile.side.clock .clock-date { display: block; max-width: none; max-height: 20px; transition: max-height 360ms cubic-bezier(0.22, 1, 0.36, 1), opacity 240ms ease-out; }
 .tile.side.clock .clock-date.gone { max-width: none; max-height: 0; }
 @media (prefers-reduced-motion: reduce) { .clock .clock-date, .tile.clock { transition: none; } }
+
+/* HWiNFO refresh button: on hover over the widgets that read HWiNFO. */
+.hwtile { position: relative; }
+.hw-refresh { position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center; color: inherit; background: rgba(0, 0, 0, 0.4); cursor: pointer; opacity: 0; transform: scale(0.8); transition: opacity 160ms, transform 160ms, background 140ms; z-index: 2; }
+.hwtile:hover .hw-refresh, .hw-refresh.busy, .hw-refresh.err, .hw-refresh.ok { opacity: 1; transform: none; }
+.hw-refresh:hover { background: rgba(0, 0, 0, 0.65); }
+.hw-refresh.busy svg { animation: cal-spin 700ms linear infinite; }
+.hw-refresh.ok { background: rgba(52, 211, 153, 0.55); }
+.hw-refresh.err { background: rgba(248, 113, 113, 0.7); }
+.hw-refresh b { font-size: 12px; }
+@media (prefers-reduced-motion: reduce) { .hw-refresh, .hw-refresh.busy svg { transition: none; animation: none; } }

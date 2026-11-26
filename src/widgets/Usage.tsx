@@ -2,6 +2,7 @@ import { along } from "../lib/axis";
 import { useEffect, useRef, useState } from "react";
 import { EVENTS, langGet, langList, langToggle, useEvent, type Lang } from "../lib/ipc";
 import { useSensors } from "./Rings";
+import { HwRefresh } from "./HwRefresh";
 
 const GB = 1 << 30;
 const gb = (b: number) => (b / GB).toFixed(1);
@@ -44,7 +45,8 @@ export function Storage() {
   const s = useSensors();
   const disks = (s.disks ?? []).slice(0, 3);
   return (
-    <div className="tile usage storage no-grow" title={s.hwinfo ? "SSD sıcaklığı ve okuma/yazma hızı (MB/s)" : s.hwinfo_stale ? "HWiNFO veri göndermiyor (ücretsiz sürüm 12 saatte durur): Ayarlar > Shared Memory Support'u kapatıp aç" : "Bu değerler için HWiNFO > Ayarlar > Shared Memory Support açık olmalı"}>
+    <div className="tile usage storage no-grow hwtile" title={s.hwinfo ? "SSD sıcaklığı ve okuma/yazma hızı (MB/s)" : s.hwinfo_stale ? "HWiNFO veri göndermiyor (ücretsiz sürüm 12 saatte durur): Ayarlar > Shared Memory Support'u kapatıp aç" : "Bu değerler için HWiNFO > Ayarlar > Shared Memory Support açık olmalı"}>
+      <HwRefresh />
       {disks.map((d) => (
         <div className="u-row" key={d.name}>
           <span className="u-name">{d.name}</span>

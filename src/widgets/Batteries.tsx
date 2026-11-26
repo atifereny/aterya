@@ -1,5 +1,8 @@
 import { useState } from "react";
-import { batteryRefresh, EVENTS, useEvent, type DeviceBattery } from "../lib/ipc";
+import { batteryRefresh, EVENTS, useEvent, useSettings, type DeviceBattery } from "../lib/ipc";
+import { batteryShown, btKey } from "../lib/batteryPrefs";
+import { useBluetooth } from "./Bluetooth";
+import { BtIcon } from "./BtIcons";
 
 const color = (p: number) => (p > 50 ? "#4ade80" : p >= 20 ? "#fbbf24" : "#f87171");
 const base = { width: 15, height: 15, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round", strokeLinejoin: "round" } as const;
@@ -27,7 +30,11 @@ const GLYPH = {
 };
 
 export function Batteries() {
-  const devices = useEvent<DeviceBattery[]>(EVENTS.battery, []);
+  const all = useEvent<DeviceBattery[]>(EVENTS.battery, []);
+  const prefs = useSettings()?.batPrefs ?? {};
+  const devices = all.filter((d) => batteryShown(prefs, d.id));
+  // Bluetooth devices the user added: shown while connected and reporting a charge.
+  const bt = useBluetooth().devices.filter((d) => batteryShown(prefs, btKey(d.id)) && d.connected && d.battery != null);
   const [busy, setBusy] = useState(false);
   const refresh = () => {
     if (busy) return;
@@ -49,6 +56,12 @@ export function Batteries() {
           </span>
         );
       })}
+      {bt.map((d) => (
+        <span key={d.id} className="bat" title={`${d.name} %${d.battery}`}>
+          <BtIcon kind={d.icon} size={15} />
+          <span style={{ color: color(d.battery!) }}>{d.battery}%</span>
+        </span>
+      ))}
     </div>
   );
 }

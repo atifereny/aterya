@@ -249,6 +249,7 @@ export interface Settings {
   dockAutohide: boolean;
   hoverLift: boolean;
   clockDate: boolean;
+  batPrefs: Record<string, boolean>;
   dividerWidth: number;
   iconSize: number;
   iconGap: number;
@@ -273,6 +274,9 @@ export const autostartSet = (on: boolean) => invoke<void>("autostart_set", { on 
 export const setStartIcon = (value: StartIconKind) => invoke<void>("set_start_icon", { value });
 export const setIndicator = (value: "dot" | "bigdot" | "line") => invoke<void>("set_indicator", { value });
 export const setWidgetScale = (id: WidgetId, scale: number) => invoke<void>("set_widget_scale", { id, scale });
+export const setBatteryPref = (id: string, show: boolean) => invoke<void>("set_battery_pref", { id, show });
+export const batteryList = () => invoke<DeviceBattery[]>("battery_list");
+export const hwinfoRestart = () => invoke<void>("hwinfo_restart");
 export const setClockDate = (on: boolean) => invoke<void>("set_clock_date", { on });
 export const setBrightnessLayout = (value: "row" | "column") => invoke<void>("set_brightness_layout", { value });
 export const floatOpen = (id: WidgetId) => invoke<void>("float_open", { id });

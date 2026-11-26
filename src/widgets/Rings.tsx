@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { batteryGet, sensorsGet, type Battery, type Chip, type Sensors } from "../lib/ipc";
+import { HwRefresh } from "./HwRefresh";
 
 /** Progress ring: the arc covers `pct` percent, children sit in the middle. */
 function Ring({ pct, color, size = 46, spin, children }: { pct: number; color: string; size?: number; spin?: boolean; children: ReactNode }) {
@@ -65,10 +66,11 @@ export function useSensors(): Sensors {
 
 const dash = "—";
 
-function ChipRing({ name, chip, hint }: { name: string; chip: Chip; hint?: string }) {
+function ChipRing({ name, chip, hint, hw }: { name: string; chip: Chip; hint?: string; hw?: boolean }) {
   const load = chip.load ?? 0;
   return (
-    <div className="tile ringtile chip no-grow" title={hint}>
+    <div className="tile ringtile chip no-grow hwtile" title={hint}>
+      {hw && <HwRefresh />}
       <Ring pct={load} color={chip.temp != null ? hot(chip.temp) : "#7aa2ff"}>
         <span className="ring-num small">{chip.temp != null ? `${Math.round(chip.temp)}°` : dash}</span>
       </Ring>
@@ -83,7 +85,7 @@ function ChipRing({ name, chip, hint }: { name: string; chip: Chip; hint?: strin
 
 export function CpuRing() {
   const s = useSensors();
-  return <ChipRing name="CPU" chip={s.cpu} hint={s.hwinfo ? undefined : s.hwinfo_stale ? "HWiNFO veri göndermiyor (ücretsiz sürüm 12 saatte durur): Ayarlar > Shared Memory Support'u kapatıp aç" : "Sıcaklık ve watt için HWiNFO > Ayarlar > Shared Memory Support açık olmalı"} />;
+  return <ChipRing name="CPU" chip={s.cpu} hw hint={s.hwinfo ? undefined : s.hwinfo_stale ? "HWiNFO veri göndermiyor (ücretsiz sürüm 12 saatte durur): Ayarlar > Shared Memory Support'u kapatıp aç" : "Sıcaklık ve watt için HWiNFO > Ayarlar > Shared Memory Support açık olmalı"} />;
 }
 
 export function GpuRing() {

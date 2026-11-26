@@ -329,21 +329,84 @@ fn hwinfo_running() -> bool {
     }
 }
 
+/// When HWiNFO was last restarted (by the user's button or by the automatic rule): the rule waits for it.
+static RESTARTED: Mutex<Option<Instant>> = Mutex::new(None);
+
 /// The user's elevated scheduled task `HWiNFOYenile` closes HWiNFO and starts it again through their own `HWiNFO`
-/// task; running it needs no elevation. Without that task this does nothing.
-fn restart_hwinfo(why: Why) {
+/// task; running it needs no elevation. Without that task this fails.
+fn run_restart_task() -> Result<(), String> {
     use std::os::windows::process::CommandExt;
-    let r = std::process::Command::new("schtasks").args(["/run", "/tn", "HWiNFOYenile"]).creation_flags(0x0800_0000).output();
-    match r {
-        Ok(o) if o.status.success() => log::info!("[sensors] HWiNFO restart task started ({why:?})"),
-        _ => log::warn!("[sensors] HWiNFO needs a restart ({why:?}) and the HWiNFOYenile task could not be run"),
+    let before = unsafe { windows::Win32::UI::WindowsAndMessaging::GetForegroundWindow() }.0 as isize;
+    let o = std::process::Command::new("schtasks").args(["/run", "/tn", "HWiNFOYenile"]).creation_flags(0x0800_0000).output().map_err(|e| e.to_string())?;
+    if o.status.success() {
+        *RESTARTED.lock().unwrap_or_else(|e| e.into_inner()) = Some(Instant::now());
+        give_back_focus(before);
+        Ok(())
+    } else {
+        Err("HWiNFOYenile görevi bulunamadı. HWiNFO'yu yeniden başlatan görev kurulu olmalı.".into())
     }
+}
+
+/// HWiNFO (elevated) opens a window in front when it starts, and keystrokes then go into it. Once that window
+/// is in front, put the window the user was working in back in front. Watches for 15 seconds.
+fn give_back_focus(before: isize) {
+    use windows::Win32::Foundation::{CloseHandle, HWND};
+    use windows::Win32::System::Threading::{OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION};
+    use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId, IsWindow};
+    if before == 0 {
+        return;
+    }
+    std::thread::spawn(move || {
+        let end = Instant::now() + Duration::from_secs(15);
+        while Instant::now() < end {
+            std::thread::sleep(Duration::from_millis(200));
+            if !unsafe { IsWindow(Some(HWND(before as *mut _))) }.as_bool() {
+                return;
+            }
+            let mut pid = 0u32;
+            unsafe { GetWindowThreadProcessId(GetForegroundWindow(), Some(&mut pid)) };
+            let is_hwinfo = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }.ok().is_some_and(|p| {
+                let mut buf = [0u16; 520];
+                let mut n = buf.len() as u32;
+                let ok = unsafe { QueryFullProcessImageNameW(p, PROCESS_NAME_WIN32, windows::core::PWSTR(buf.as_mut_ptr()), &mut n) }.is_ok();
+                let _ = unsafe { CloseHandle(p) };
+                ok && String::from_utf16_lossy(&buf[..n as usize]).to_lowercase().ends_with("hwinfo64.exe")
+            });
+            if is_hwinfo {
+                // The Alt tap `activate` relies on is dropped while an elevated window has the focus, so this goes
+                // through SwitchToThisWindow, which is not bound by the foreground lock.
+                unsafe { windows::Win32::UI::WindowsAndMessaging::SwitchToThisWindow(HWND(before as *mut _), true) };
+                std::thread::sleep(Duration::from_millis(300));
+                let now = unsafe { GetForegroundWindow() }.0 as isize;
+                log::info!("[sensors] focus given back after the HWiNFO restart ({})", if now == before { "ok" } else { "refused" });
+                return;
+            }
+        }
+    });
+}
+
+fn restart_hwinfo(why: Why) {
+    match run_restart_task() {
+        Ok(()) => log::info!("[sensors] HWiNFO restart task started ({why:?})"),
+        Err(_) => log::warn!("[sensors] HWiNFO needs a restart ({why:?}) and the HWiNFOYenile task could not be run"),
+    }
+}
+
+/// The refresh button on the widgets that read HWiNFO: close it and start it again, whatever state it is in.
+#[tauri::command]
+pub async fn hwinfo_restart() -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let r = run_restart_task();
+        log::info!("[sensors] HWiNFO restart by the user: {}", if r.is_ok() { "started" } else { "task missing" });
+        r
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 pub fn start() {
     std::thread::spawn(|| {
         let mut bad_since: Option<Instant> = None;
-        let mut restarted: Option<Instant> = None;
         let mut no_data_tries = 0u32;
         let (mut cpu_load, nvml) = (CpuLoad(None), Nvml::open());
         let mut net = net_totals().map(|t| (t, Instant::now()));
@@ -355,9 +418,8 @@ pub fn start() {
                 bad_since = None;
             } else {
                 let since = *bad_since.get_or_insert_with(Instant::now);
-                let st = HwState { mapped: hw.is_some(), stale, running: hwinfo_running(), bad_for: since.elapsed(), since_restart: restarted.map(|t| t.elapsed()), no_data_tries };
+                let st = HwState { mapped: hw.is_some(), stale, running: hwinfo_running(), bad_for: since.elapsed(), since_restart: RESTARTED.lock().unwrap_or_else(|e| e.into_inner()).map(|t| t.elapsed()), no_data_tries };
                 if let Some(why) = restart_reason(&st) {
-                    restarted = Some(Instant::now());
                     bad_since = Some(Instant::now()); // give the new start the full grace time
                     if why == Why::NoData {
                         no_data_tries += 1;
